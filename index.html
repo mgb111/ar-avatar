@@ -265,7 +265,12 @@ async function getAIResponse(userPrompt){
             headers:{'Content-Type':'application/json'},
             body:JSON.stringify({ systemPrompt, userPrompt })
         });
-        if(!response.ok){ const err=await response.json(); throw new Error(`API error ${response.status}`); }
+        if(!response.ok){
+            let detail = '';
+            try { detail = JSON.stringify(await response.json()); }
+            catch { detail = (await response.text()).slice(0,200); }
+            throw new Error(`API error ${response.status}: ${detail}`);
+        }
         const data=await response.json();
         const text=data.text||"Sorry, I couldn't generate a response.";
         await generateAndPlaySpeech(text.trim());
@@ -285,7 +290,12 @@ async function generateAndPlaySpeech(text){
             headers:{'Content-Type':'application/json'},
             body:JSON.stringify({ text })
         });
-        if(!response.ok) throw new Error("TTS generation failed");
+        if(!response.ok){
+            let detail = '';
+            try { detail = JSON.stringify(await response.json()); }
+            catch { detail = (await response.text()).slice(0,200); }
+            throw new Error(`TTS generation failed (${response.status}): ${detail}`);
+        }
         const blob=await response.blob();
         const audioUrl=URL.createObjectURL(blob);
         const audio=new Audio(audioUrl); currentAudio=audio;
