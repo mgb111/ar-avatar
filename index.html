@@ -28,20 +28,30 @@
             flex-direction: column;
             gap: 0.75rem;
             background: linear-gradient(to top, rgba(17, 24, 39, 0.9), rgba(17, 24, 39, 0));
+            z-index: 10;
+        }
+        #ar-button-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
         #ar-button {
-            position: absolute;
-            top: 1rem;
-            right: 1rem;
             background-color: rgba(31, 41, 55, 0.8);
             color: white;
-            padding: 0.75rem 1.25rem;
+            padding: 1rem 2rem;
+            font-size: 1.25rem;
             border-radius: 9999px;
             border: 1px solid rgba(75, 85, 99, 0.8);
             cursor: pointer;
             font-weight: 600;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             transition: all 0.2s ease-in-out;
+            z-index: 20;
         }
         #ar-button:hover {
             background-color: rgba(55, 65, 81, 0.9);
@@ -100,7 +110,12 @@
         <span>Loading 3D environment...</span>
     </div>
 
-    <div id="ui-container" class="max-w-4xl mx-auto w-full">
+    <div id="ar-button-container">
+         <!-- This button will be replaced by the Three.js ARButton -->
+        <button id="ar-button-placeholder">Enter Augmented Reality</button>
+    </div>
+
+    <div id="ui-container" class="max-w-4xl mx-auto w-full" style="display: none;">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div class="flex flex-col gap-2">
                 <label for="avatar-upload" class="text-sm font-medium text-gray-300">1. Load GLB Avatar</label>
@@ -108,7 +123,7 @@
             </div>
             <div class="flex flex-col gap-2">
                 <label for="script-input" class="text-sm font-medium text-gray-300">2. Enter Script</label>
-                <textarea id="script-input" rows="2" class="block w-full rounded-lg border-gray-600 bg-gray-800 text-gray-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2" placeholder="Hello, welcome to the future!"></textarea>
+                <textarea id="script-input" rows="3" class="block w-full rounded-lg border-gray-600 bg-gray-800 text-gray-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2" placeholder="Enter a script for the avatar to speak...">Hello, I am Manish from QuickScanAR, a tool that converts your static marketing print materials into interactive augmented reality experiences. I look forward to serving your immersive media needs.</textarea>
             </div>
         </div>
         <button id="speak-button" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg">
@@ -142,6 +157,8 @@
         const speakButton = document.getElementById('speak-button');
         const scriptInput = document.getElementById('script-input');
         const avatarUpload = document.getElementById('avatar-upload');
+        const uiContainer = document.getElementById('ui-container');
+        const arButtonContainer = document.getElementById('ar-button-container');
 
         const defaultAvatarUrl = 'https://raw.githubusercontent.com/mgb111/ar-avatar/main/avatar.glb';
 
@@ -172,6 +189,7 @@
             controls = new OrbitControls(camera, renderer.domElement);
             controls.target.set(0, 1, 0);
             controls.update();
+            controls.enabled = false; // Disable controls until we are out of AR
 
             // Load Default Model
             loadModel(defaultAvatarUrl);
@@ -199,10 +217,28 @@
         }
 
         function setupAR() {
-            const arButton = ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] });
+            const arButton = ARButton.createButton(renderer, { 
+                requiredFeatures: ['hit-test'],
+                onSessionStart: () => {
+                    arButtonContainer.style.display = 'none';
+                    uiContainer.style.display = 'none'; 
+                    controls.enabled = false;
+                },
+                 onSessionEnd: () => {
+                    arButtonContainer.style.display = 'flex';
+                    uiContainer.style.display = 'none';
+                    controls.enabled = true;
+                     if(model) {
+                       model.position.set(0, 0, 0);
+                       model.visible = true;
+                    }
+                }
+            });
             arButton.id = 'ar-button';
-            arButton.textContent = "Enter Augmented Reality"
-            document.body.appendChild(arButton);
+            arButton.textContent = "Enter Augmented Reality";
+            arButtonContainer.innerHTML = ''; // Clear placeholder
+            arButtonContainer.appendChild(arButton);
+
 
             // Reticle for placing object
             reticle = new THREE.Mesh(
@@ -222,6 +258,8 @@
             if (reticle.visible && model) {
                 model.position.setFromMatrixPosition(reticle.matrix);
                 model.visible = true;
+                // Show the UI once the model is placed
+                uiContainer.style.display = 'flex';
             }
         }
         
@@ -229,7 +267,9 @@
         let hitTestSourceRequested = false;
 
         function animate(timestamp, frame) {
-            controls.update();
+            if (!renderer.xr.isPresenting) {
+                controls.update();
+            }
             if (mixer) mixer.update(clock.getDelta());
             
             // Handle Lip Sync
@@ -249,12 +289,6 @@
                     session.addEventListener('end', () => {
                         hitTestSourceRequested = false;
                         hitTestSource = null;
-                        reticle.visible = false;
-                        // Reset model position after exiting AR
-                        if(model) {
-                           model.position.set(0, 0, 0);
-                           model.visible = true;
-                        }
                     });
                     hitTestSourceRequested = true;
                 }
@@ -265,9 +299,6 @@
                         const hit = hitTestResults[0];
                         reticle.visible = true;
                         reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
-                        if (model && model.visible === false) {
-                           // Prompt user to tap
-                        }
                     } else {
                         reticle.visible = false;
                     }
@@ -289,7 +320,6 @@
             loadingOverlay.style.display = 'flex';
             const loader = new GLTFLoader();
             
-            // Clean up previous model
             if(model) {
                 scene.remove(model);
                 model = null;
@@ -299,21 +329,18 @@
             loader.load(url, (gltf) => {
                 model = gltf.scene;
                 
-                // Center and scale model
                 const box = new THREE.Box3().setFromObject(model);
                 const center = box.getCenter(new THREE.Vector3());
                 const size = box.getSize(new THREE.Vector3());
                 const maxDim = Math.max(size.x, size.y, size.z);
-                const scale = 2.0 / maxDim; // Scale to be ~2 meters tall
+                const scale = 2.0 / maxDim;
                 model.scale.set(scale, scale, scale);
                 model.position.sub(center.multiplyScalar(scale));
                 
                 scene.add(model);
 
-                // Find jaw morph target
                 model.traverse((node) => {
                     if (node.isMesh && node.morphTargetDictionary) {
-                        // Common names for jaw/mouth open morph targets
                         const possibleNames = ['jawOpen', 'mouthOpen', 'v_jaw_open', 'mouth_open'];
                         for (const name of possibleNames) {
                             if (node.morphTargetDictionary[name] !== undefined) {
@@ -324,10 +351,8 @@
                     }
                 });
 
-                // Animation Mixer
                 if (gltf.animations && gltf.animations.length) {
                     mixer = new THREE.AnimationMixer(model);
-                    // Play a default idle animation if available
                     const idleAction = mixer.clipAction(gltf.animations.find(clip => clip.name.toLowerCase().includes('idle')) || gltf.animations[0]);
                     idleAction.play();
                 }
@@ -342,7 +367,6 @@
 
                 onLoadedCallback();
             }, 
-            // onProgress callback (optional)
             undefined, 
             (error) => {
                 console.error(error);
@@ -360,12 +384,10 @@
                 console.warn("Could not find a 'jawOpen' or similar mouth shape on this avatar. Lip-sync is disabled.");
             }
             
-            // Stop any currently playing speech
             window.speechSynthesis.cancel();
 
             const utterance = new SpeechSynthesisUtterance(text);
 
-            // Find a male voice
             const maleVoice = voices.find(voice => 
                 voice.lang.startsWith('en') && 
                 (voice.name.includes('Male') || voice.name.includes('Google US English') || voice.name.includes('David'))
@@ -383,14 +405,13 @@
         function handleLipSync() {
             if (window.speechSynthesis.speaking && jawOpenMorphTargetIndex !== null) {
                 const now = Date.now();
-                const influence = (Math.sin(now * 0.025) + 1) / 2; // Simple sine wave for mouth movement
+                const influence = (Math.sin(now * 0.025) + 1) / 2;
                 model.traverse(child => {
                     if (child.isMesh && child.morphTargetInfluences) {
-                        child.morphTargetInfluences[jawOpenMorphTargetIndex] = influence * 0.8; // Don't open full
+                        child.morphTargetInfluences[jawOpenMorphTargetIndex] = influence * 0.8;
                     }
                 });
             } else if (model && jawOpenMorphTargetIndex !== null) {
-                // Reset when not speaking
                 model.traverse(child => {
                     if (child.isMesh && child.morphTargetInfluences) {
                         child.morphTargetInfluences[jawOpenMorphTargetIndex] = 0;
@@ -408,6 +429,4 @@
     </script>
 </body>
 </html>
-
-
 
