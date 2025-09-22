@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Talking Avatar with HeadTTS</title>
+    <title>Talking Avatar Debugging</title>
     <style>
         body { 
             font-family: sans-serif;
@@ -22,11 +22,6 @@
             background: rgba(0,0,0,0.5);
             border-radius: 8px;
             color: white;
-        }
-        textarea {
-            width: 300px;
-            height: 60px;
-            margin-bottom: 10px;
         }
         button {
             padding: 10px 15px;
@@ -49,8 +44,7 @@
     <div id="container"></div>
 
     <div id="controls">
-        <textarea id="script-input">Hello! I am an Augmented Reality avatar. I can speak any text you write here.</textarea>
-        <button id="speak-button">Speak</button>
+        <button id="speak-button">Play Introduction</button>
         <p id="status">Status: Ready</p>
     </div>
 
@@ -64,48 +58,58 @@
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0xeeeeee);
         const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 1.6, 2.5);
+        
+        // --- DEBUGGING: Move camera far back to get a wider view ---
+        camera.position.set(0, 1.6, 10); // Moved camera from 2.5 to 10
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.getElementById('container').appendChild(renderer.domElement);
 
         const controls = new OrbitControls(camera, renderer.domElement);
-        controls.target.set(0, 1.4, 0); // Target the head of the avatar
+        controls.target.set(0, 1.4, 0);
         controls.update();
 
-        // Add some lighting
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
         scene.add(ambientLight);
         const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
         directionalLight.position.set(1, 1, 1);
         scene.add(directionalLight);
         
+        // --- DEBUGGING: Add the AxesHelper to the scene ---
+        const axesHelper = new THREE.AxesHelper(5); // The number 5 sets the size of the lines
+        scene.add(axesHelper);
+
         const statusElement = document.getElementById('status');
-        let head; // To hold the TalkingHead instance
-        let headtts; // To hold the HeadTTS instance
+        let head;
+        let headtts;
+        
+        // --- YOUR PRE-DEFINED SCRIPT ---
+        const myPredefinedScript = "Welcome to my webpage. I am a digital avatar, ready to assist you. Please look around.";
 
         async function initializeAvatar() {
-            // --- 2. Initialize TalkingHead ---
             statusElement.innerText = 'Status: Loading Avatar...';
             head = new TalkingHead(scene, {
                 camera: camera,
-                ttsEndpoint: "none" // We are using HeadTTS, so we disable the default
+                ttsEndpoint: "none"
             });
-            // IMPORTANT: Replace 'avatar.glb' with the path to your own model
-            await head.loadModel('avatar.glb'); 
+
+            // --- Make sure this path is correct. It looks for avatar.glb in the same folder ---
+            await head.loadModel('avatar.glb');
+            
+            // --- DEBUGGING: Log to the console after loading ---
+            console.log("Model loading function has completed.");
+            console.log("Avatar object:", head.model); // Check if the model object exists
+
             head.setVisible(true);
             statusElement.innerText = 'Status: Avatar Loaded.';
             
-            // --- 3. Initialize HeadTTS ---
             statusElement.innerText = 'Status: Loading TTS Engine...';
             headtts = new HeadTTS();
             statusElement.innerText = 'Status: Ready.';
 
-            // --- 4. Connect HeadTTS to TalkingHead ---
             headtts.onmessage = (message) => {
                 if (message.type === "audio") {
-                    // When HeadTTS produces audio, feed it to the TalkingHead
                     head.speakAudio(message.data);
                 } else if (message.type === "error") {
                     console.error("HeadTTS Error:", message.data.error);
@@ -114,24 +118,21 @@
             };
         }
 
-        // --- Event Listener for the Button ---
         document.getElementById('speak-button').addEventListener('click', () => {
             if (!head || !headtts) {
                 alert('Avatar or TTS not initialized yet.');
                 return;
             }
-            const text = document.getElementById('script-input').value;
+            const text = myPredefinedScript;
             if (text) {
                 statusElement.innerText = 'Status: Synthesizing speech...';
-                // This tells HeadTTS to generate the audio and visemes
-                headtts.synthesize({ input: text }); 
+                headtts.synthesize({ input: text });
             }
         });
 
-        // Animation loop to render the scene
         function animate() {
             requestAnimationFrame(animate);
-            if (head) head.update(performance.now()); // Update the avatar animations
+            if (head) head.update(performance.now());
             renderer.render(scene, camera);
         }
 
