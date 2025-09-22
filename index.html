@@ -45,6 +45,7 @@
 </head>
 <body>
     <div id="container"></div>
+
     <div id="controls">
         <button id="speak-button">Play Introduction</button>
         <p id="status">Status: Ready</p>
@@ -69,15 +70,19 @@
         const statusElement = document.getElementById('status');
         let head;
         let headtts;
-        const myPredefinedScript = "This is the final version. Everything is now working correctly.";
+        const myPredefinedScript = "Hello. This is a demonstration of the talking avatar with English lip-sync.";
 
         async function initializeAvatar() {
             statusElement.innerText = 'Status: Loading...';
             const container = document.getElementById('container'); 
+            
+            // Initialize with English lip-sync
             head = new TalkingHead(container, {
                 camera: camera,
-                ttsEndpoint: "none"
+                ttsEndpoint: "none",
+                lipsyncLang: 'en' 
             });
+
             mainScene.add(head.scene);
             await head.loadModel('avatar.glb');
             head.setVisible(true);
@@ -108,10 +113,9 @@
             }
         });
 
-        // The animate function simply keeps the frame loop running.
-        // The TalkingHead library handles its own updates and rendering.
         function animate() {
             requestAnimationFrame(animate);
+            // The TalkingHead library handles its own updates.
         }
 
         initializeAvatar();
