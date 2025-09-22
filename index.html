@@ -1,104 +1,146 @@
-<!DOCTYPE html>
+<!-- index.html -->
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Talking Avatar Example</title>
+  <title>TalkingHead simple lipsync example</title>
 
+  <!-- importmap shown in the TalkingHead README (three + talkinghead) -->
   <script type="importmap">
   {
     "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+      "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js/+esm",
       "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
-      "talkinghead": "https://cdn.jsdelivr.net/gh/met4citizen/TalkingHead@1.6.0/modules/talkinghead.mjs",
-      "headtts": "https://cdn.jsdelivr.net/npm/@met4citizen/headtts@0.2.1/+esm"
+      "talkinghead": "https://cdn.jsdelivr.net/gh/met4citizen/TalkingHead@main/modules/talkinghead.mjs"
     }
   }
   </script>
 
   <style>
-    body { margin: 0; font-family: system-ui, sans-serif; background: #f3f4f6; }
-    #avatar { width: 100vw; height: 100vh; position: relative; overflow: hidden; }
-    #controls {
-      position: absolute; left: 16px; top: 16px; z-index: 40;
-      background: rgba(0,0,0,0.5); color: white; padding: 10px; border-radius: 8px;
-    }
-    button { padding: 8px 12px; cursor: pointer; }
-    p { margin: 8px 0 0 0; font-size: 13px; color: #fff; }
+    body { margin: 0; font-family: system-ui, -apple-system, Roboto, sans-serif; background: #1b1b1b; color: #eee; }
+    #avatar { width: 100%; height: 70vh; display: block; background: #0f0f0f; }
+    .controls { padding: 12px; display:flex; gap:10px; align-items:center; }
+    input[type="text"]{ flex:1; padding:8px; border-radius:6px; border:1px solid #333; background:#141414; color:#eee }
+    button{ padding:8px 12px; border-radius:6px; border:none; cursor:pointer }
   </style>
 </head>
 <body>
   <div id="avatar"></div>
 
-  <div id="controls">
-    <button id="init-button">Load Avatar</button>
-    <button id="speak-button" disabled>Play Introduction</button>
-    <p id="status">Status: Waiting for user action</p>
+  <div class="controls">
+    <input id="ttsText" type="text" value="Hello there. This is a lipsync test." />
+    <button id="speakTextBtn">Speak text (TTS)</button>
+    <button id="playAudioBtn">Play sample.mp3 (speakAudio)</button>
+    <select id="lang" style="width:160px;">
+      <option value="en">lipsync en (default)</option>
+      <option value="fi">lipsync fi</option>
+    </select>
   </div>
 
   <script type="module">
-    import { TalkingHead } from 'talkinghead';
-    import { HeadTTS } from 'headtts';
+    import { TalkingHead } from "talkinghead";
 
-    const nodeAvatar = document.getElementById('avatar');
-    const statusEl = document.getElementById('status');
-    const initBtn = document.getElementById('init-button');
-    const speakBtn = document.getElementById('speak-button');
+    // The DOM node where the avatar will render
+    const nodeAvatar = document.getElementById("avatar");
 
-    let head = null;
-    let headtts = null;
-    const myPredefinedScript = "Hello, this talking avatar is now working correctly.";
+    // Create TalkingHead instance
+    // IMPORTANT: adjust options as needed. Here we load only english lipsync module to be light.
+    const head = new TalkingHead(nodeAvatar, {
+      lipsyncModules: ["en"],    // load only english module by default
+      lipsyncLang: "en",         // default lipsync language
+      mixerGainSpeech: 3,        // louder speech mixer if needed
+      cameraView: "upper",
+      modelFPS: 30
+    });
 
-    async function initialize() {
-      statusEl.innerText = 'Status: Initializing TalkingHead';
+    // Wait for the talkinghead to initialize its scene
+    // The TalkingHead constructor usually prepares the scene and exposes methods
+    // We now load a local glb named avatar.glb (place it alongside this html)
+    // NOTE: some apps use different method names. The projects' examples show creating the head then loading an avatar
+    // If your TalkingHead version exposes a load method with a different name, replace accordingly.
+    async function loadMyAvatar() {
       try {
-        head = new TalkingHead(nodeAvatar, {
-          ttsEndpoint: "none",
-          lipsyncModules: [],
-          lipsyncLang: "en",
-          cameraView: "head",
-          cameraDistance: 0.9,
-          cameraRotateEnable: true
-        });
-
-        statusEl.innerText = 'Status: Loading avatar';
-
-        // Resume audio context if blocked
-        if (head.audioContext && head.audioContext.state === "suspended") {
-          await head.audioContext.resume();
+        // If your version has `loadAvatar` or `setUrl`, try those names.
+        // The TalkingHead repo examples create the head and then load a Ready Player Me GLB
+        // Many simple examples call something like head.loadAvatarUrl or head.load (if available).
+        // We'll attempt the common `loadAvatar` then fallback to `load` if needed
+        if (typeof head.loadAvatar === "function") {
+          await head.loadAvatar("avatar.glb");
+        } else if (typeof head.load === "function") {
+          await head.load("avatar.glb");
+        } else if (typeof head.setModelUrl === "function") {
+          await head.setModelUrl("avatar.glb");
+        } else {
+          // many minimal examples just set a model option before creating the class
+          // As a fallback attempt, try speakText once to ensure the class is usable
+          console.warn("Could not find a dedicated load method on TalkingHead instance. If the avatar does not appear, check your TalkingHead module version and API. See README for your version.");
         }
-
-        await head.showAvatar({
-          url: "https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb",
-          lipsyncLang: "en"
-        });
-
-        statusEl.innerText = 'Status: Avatar loaded';
-        speakBtn.disabled = false;
-
-        headtts = new HeadTTS();
-        headtts.onmessage = (message) => {
-          if (message.type === "audio") {
-            head.speakAudio(message.data);
-          }
-        };
-
+        console.log("avatar load attempted");
       } catch (err) {
-        console.error("Initialization error", err);
-        statusEl.innerText = "Error: " + (err && err.message ? err.message : String(err));
+        console.error("avatar load failed:", err);
       }
     }
 
-    initBtn.addEventListener('click', () => {
-      initialize();
-      initBtn.disabled = true;
+    // Immediately try to load avatar.glb
+    loadMyAvatar();
+
+    // ----- TTS example using built-in speakText (uses Google TTS by default in repo)
+    // The repo shows `speakText` as a high level helper that returns when done
+    document.getElementById("speakTextBtn").addEventListener("click", async () => {
+      const txt = document.getElementById("ttsText").value || "Hello";
+      try {
+        // If you want word level timestamps or ssml, the TalkingHead TTS helper supports ttsEndpoint or ttsApikey options
+        // For local tests without proxy you might need to supply ttsApikey or a TTS proxy; if not available use speakAudio below.
+        await head.speakText(txt, { lang: "en-US" });
+      } catch (err) {
+        console.error("speakText failed", err);
+        alert("speakText failed. See console. If you do not have a TTS proxy/api key, use sample audio or wire a TTS endpoint.");
+      }
     });
 
-    speakBtn.addEventListener('click', () => {
-      if (!headtts) return;
-      statusEl.innerText = 'Status: Speaking...';
-      headtts.synthesize({ input: myPredefinedScript, lang: "en-US" });
+    // ----- speakAudio example (play a local mp3 and lipsync against it)
+    // Place sample.mp3 next to this html. The repo supports speakAudio with an audio HTML element or an ArrayBuffer.
+    document.getElementById("playAudioBtn").addEventListener("click", async () => {
+      try {
+        // Load the audio file into an ArrayBuffer, decode to PCM and call speakAudio.
+        const resp = await fetch("sample.mp3");
+        const ab = await resp.arrayBuffer();
+
+        // Many TalkingHead versions accept speakAudio({audio:arrayBuffer, pcmSampleRate:22050})
+        // We'll try the generic call shape used in examples
+        await head.speakAudio({
+          audio: ab,
+          // If your talkinghead expects decoded PCM frames instead of container bytes,
+          // set pcmSampleRate and the class will decode or you can pre-decode using AudioContext
+          pcmSampleRate: 22050
+        });
+
+      } catch (err) {
+        console.error("speakAudio failed", err);
+        alert("speakAudio failed. Check console for details and ensure sample.mp3 exists and CORS allows fetch.");
+      }
     });
+
+    // ----- language switch for built-in lipsync modules
+    document.getElementById("lang").addEventListener("change", (e) => {
+      const lang = e.target.value;
+      if (head) {
+        head.lipsyncLang = lang;
+        // load additional language module if needed - some versions need dynamic module loading
+        if (!head.lipsyncModules || !head.lipsyncModules.includes(lang)) {
+          // attempt to load module by pushing
+          try {
+            head.lipsyncModules = (head.lipsyncModules || []).concat([lang]);
+          } catch(e) { /* nonfatal */ }
+        }
+        console.log("switched lipsyncLang to", lang);
+      }
+    });
+
+    // Optional: Diagnostics
+    window.head = head;
+
   </script>
 </body>
 </html>
