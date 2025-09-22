@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Talking Avatar working example</title>
+  <title>Talking Avatar Example</title>
 
   <script type="importmap">
   {
@@ -31,8 +31,9 @@
   <div id="avatar"></div>
 
   <div id="controls">
-    <button id="speak-button">Play Introduction</button>
-    <p id="status">Status: Starting</p>
+    <button id="init-button">Load Avatar</button>
+    <button id="speak-button" disabled>Play Introduction</button>
+    <p id="status">Status: Waiting for user action</p>
   </div>
 
   <script type="module">
@@ -41,6 +42,7 @@
 
     const nodeAvatar = document.getElementById('avatar');
     const statusEl = document.getElementById('status');
+    const initBtn = document.getElementById('init-button');
     const speakBtn = document.getElementById('speak-button');
 
     let head = null;
@@ -50,59 +52,53 @@
     async function initialize() {
       statusEl.innerText = 'Status: Initializing TalkingHead';
       try {
-        // Create the TalkingHead instance attached to the DOM node
-        // avatarOnly false means TalkingHead creates its own renderer and camera
         head = new TalkingHead(nodeAvatar, {
           ttsEndpoint: "none",
-          lipsyncModules: [],        // disable dynamic lip module auto load for now
+          lipsyncModules: [],
           lipsyncLang: "en",
           cameraView: "head",
           cameraDistance: 0.9,
           cameraRotateEnable: true
         });
 
-        statusEl.innerText = 'Status: Loading avatar model';
+        statusEl.innerText = 'Status: Loading avatar';
 
-        // Use a known Ready Player Me example model so you can test immediately.
-        // Replace the url below with './avatar.glb' or your own URL when you want to test your file.
+        // Resume audio context if blocked
+        if (head.audioContext && head.audioContext.state === "suspended") {
+          await head.audioContext.resume();
+        }
+
         await head.showAvatar({
-          url: "https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb?morphTargets=ARKit,Oculus+Visemes,mouthOpen,mouthSmile,eyesClosed,eyesLookUp,eyesLookDown&textureSizeLimit=1024&textureFormat=png",
+          url: "https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb",
           lipsyncLang: "en"
         });
 
-        head.setVisible(true);
         statusEl.innerText = 'Status: Avatar loaded';
+        speakBtn.disabled = false;
 
-        // Initialize HeadTTS and forward audio to TalkingHead
         headtts = new HeadTTS();
-
         headtts.onmessage = (message) => {
           if (message.type === "audio") {
-            // speakAudio accepts the audio payload produced by HeadTTS
-            try { head.speakAudio(message.data); }
-            catch (e) { console.error("speakAudio failed", e); }
-          } else if (message.type === "error") {
-            console.error("HeadTTS error", message.data);
-            statusEl.innerText = 'Status: TTS error';
+            head.speakAudio(message.data);
           }
         };
 
-        statusEl.innerText = 'Status: Ready';
       } catch (err) {
         console.error("Initialization error", err);
         statusEl.innerText = "Error: " + (err && err.message ? err.message : String(err));
       }
     }
 
-    speakBtn.addEventListener('click', () => {
-      if (!head || !headtts) { alert('Avatar not ready'); return; }
-      statusEl.innerText = 'Status: Synthesizing speech';
-      // HeadTTS will send audio messages which we forward to head.speakAudio
-      headtts.synthesize({ input: myPredefinedScript, lang: "en-US" });
+    initBtn.addEventListener('click', () => {
+      initialize();
+      initBtn.disabled = true;
     });
 
-    // Start
-    initialize();
+    speakBtn.addEventListener('click', () => {
+      if (!headtts) return;
+      statusEl.innerText = 'Status: Speaking...';
+      headtts.synthesize({ input: myPredefinedScript, lang: "en-US" });
+    });
   </script>
 </body>
 </html>
