@@ -108,7 +108,6 @@
                  <div id="thinking-icon" class="thinking-loader" style="display:none; width: 24px; height: 24px;"></div>
             </button>
         </div>
-        <input type="password" id="api-key-input" placeholder="Enter OpenAI API Key" class="bg-gray-800 border border-gray-600 text-white text-sm rounded-full px-4 py-2 w-64 text-center placeholder-gray-400" autocomplete="off">
     </div>
 
     <!-- ES Module Shims for older browser support -->
@@ -127,6 +126,12 @@
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { ARButton } from 'three/addons/webxr/ARButton.js';
 
+        // WARNING: Storing API keys directly in client-side code is highly insecure.
+        // Anyone can view this key by inspecting the page source.
+        // This can lead to unauthorized use and charges to your account.
+        // This is implemented as requested, but it is strongly advised to use a backend proxy.
+        const OPENAI_API_KEY = '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';
+
         let camera, scene, renderer, controls;
         let model, mixer, clock;
         let jawOpenMorphTargetIndex = null;
@@ -144,7 +149,6 @@
         const micButton = document.getElementById('mic-button');
         const micIcon = document.getElementById('mic-icon');
         const thinkingIcon = document.getElementById('thinking-icon');
-        const apiKeyInput = document.getElementById('api-key-input');
 
         const defaultAvatarUrl = 'https://raw.githubusercontent.com/mgb111/ar-avatar/main/avatar.glb';
         
@@ -282,13 +286,6 @@
         }
         
         async function getAIResponse(userPrompt) {
-            const finalApiKey = apiKeyInput.value;
-
-            if (!finalApiKey) {
-                await generateAndPlaySpeech("I need an API key to connect. Please enter your OpenAI API key to chat.");
-                return;
-            }
-
             isAIThinking = true;
             micIcon.style.display = 'none';
             thinkingIcon.style.display = 'block';
@@ -310,7 +307,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${finalApiKey}`
+                        'Authorization': `Bearer ${OPENAI_API_KEY}`
                     },
                     body: JSON.stringify(payload)
                 });
@@ -338,8 +335,7 @@
         }
 
         async function generateAndPlaySpeech(text) {
-             const finalApiKey = apiKeyInput.value;
-             if (!text || !model || !finalApiKey) return;
+             if (!text || !model) return;
 
              isSpeaking = true;
              const ttsUrl = 'https://api.openai.com/v1/audio/speech';
@@ -354,7 +350,7 @@
                      method: 'POST',
                      headers: {
                          'Content-Type': 'application/json',
-                         'Authorization': `Bearer ${finalApiKey}`
+                         'Authorization': `Bearer ${OPENAI_API_KEY}`
                      },
                      body: JSON.stringify(payload)
                  });
