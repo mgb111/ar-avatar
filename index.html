@@ -1,3 +1,23 @@
+async function checkBackend(){
+    try{
+        const r = await fetch(`${BACKEND_URL}/api/health`,{ method:'GET' });
+        if(!r.ok){
+            let detail = '';
+            try { detail = JSON.stringify(await r.clone().json()); }
+            catch { detail = (await r.clone().text()).slice(0,100); }
+            apiKeyStatus.textContent=`Backend: ❌ ${r.status} ${detail}`;
+            apiKeyStatus.style.color='#ef4444';
+            return;
+        }
+        const data = await r.json();
+        const envOk = data?.env ? 'Key ✅' : 'Key ❌';
+        apiKeyStatus.textContent=`Backend: ✅ Healthy (${envOk})`;
+        apiKeyStatus.style.color='#10b981';
+    } catch(e){
+        apiKeyStatus.textContent=`Backend: ❌ ${e.message}`;
+        apiKeyStatus.style.color='#ef4444';
+    }
+}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -115,7 +135,11 @@ function init(){
     if(!BACKEND_URL){
         apiKeyStatus.textContent='Backend: ❌ Missing BACKEND_URL';
         apiKeyStatus.style.color='#ef4444';
-    } else { apiKeyStatus.textContent='Backend: ✅ Connected (proxy)'; apiKeyStatus.style.color='#10b981'; }
+    } else {
+        apiKeyStatus.textContent='Backend: ⏳ Checking...';
+        apiKeyStatus.style.color='#f59e0b';
+        checkBackend();
+    }
 
     scene=new THREE.Scene();
     clock=new THREE.Clock();
