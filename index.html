@@ -318,7 +318,7 @@
             window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(text);
             const maleVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Male'));
-            utterance.voice = maleVoice || voices.find(v => v.lang.startsWith('en'));
+            utterance.voice = maleVoice;
             utterance.onstart = () => { isSpeaking = true; };
             utterance.onend = () => { isSpeaking = false; };
             window.speechSynthesis.speak(utterance);
