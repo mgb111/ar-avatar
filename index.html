@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>AI Avatar Lip-Sync & AR</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -17,18 +17,6 @@
             display: block;
             width: 100%;
             height: 100%;
-        }
-        #ui-container {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            padding: 1rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-            background: linear-gradient(to top, rgba(17, 24, 39, 0.9), rgba(17, 24, 39, 0));
-            z-index: 10;
         }
         #ar-button-container {
             position: absolute;
@@ -86,19 +74,6 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        /* Style for file input */
-        input[type="file"]::file-selector-button {
-            background-color: #3b82f6;
-            color: white;
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 0.5rem;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        input[type="file"]::file-selector-button:hover {
-            background-color: #2563eb;
-        }
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -115,21 +90,17 @@
         <button id="ar-button-placeholder">Enter Augmented Reality</button>
     </div>
 
-    <div id="ui-container" class="max-w-4xl mx-auto w-full" style="display: none;">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div class="flex flex-col gap-2">
-                <label for="avatar-upload" class="text-sm font-medium text-gray-300">1. Load GLB Avatar</label>
-                <input id="avatar-upload" type="file" accept=".glb" class="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700">
-            </div>
-            <div class="flex flex-col gap-2">
-                <label for="script-input" class="text-sm font-medium text-gray-300">2. Enter Script</label>
-                <textarea id="script-input" rows="3" class="block w-full rounded-lg border-gray-600 bg-gray-800 text-gray-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2" placeholder="Enter a script for the avatar to speak...">Hello, I am Manish from QuickScanAR, a tool that converts your static marketing print materials into interactive augmented reality experiences. I look forward to serving your immersive media needs.</textarea>
-            </div>
-        </div>
-        <button id="speak-button" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg">
-            Speak & Animate
+    <!-- Hidden textarea to hold the speech script -->
+    <textarea id="script-input" style="display:none;">Hello, I am Manish from QuickScanAR, a tool that converts your static marketing print materials into interactive augmented reality experiences. I look forward to serving your immersive media needs.</textarea>
+
+    <!-- New UI for AR mode -->
+    <div id="ar-controls-container" style="position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%); z-index: 10; display: none; gap: 1rem;">
+        <button id="play-pause-button" class="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white font-bold p-4 rounded-full transition duration-200 shadow-lg flex justify-center items-center">
+             <svg id="pause-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+             <svg id="play-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
         </button>
     </div>
+
 
     <!-- ES Module Shims for older browser support -->
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
@@ -154,61 +125,61 @@
         let voices = [];
         
         const loadingOverlay = document.getElementById('loading-overlay');
-        const speakButton = document.getElementById('speak-button');
         const scriptInput = document.getElementById('script-input');
-        const avatarUpload = document.getElementById('avatar-upload');
-        const uiContainer = document.getElementById('ui-container');
         const arButtonContainer = document.getElementById('ar-button-container');
+        const arControlsContainer = document.getElementById('ar-controls-container');
+        const playPauseButton = document.getElementById('play-pause-button');
+        const playIcon = document.getElementById('play-icon');
+        const pauseIcon = document.getElementById('pause-icon');
 
         const defaultAvatarUrl = 'https://raw.githubusercontent.com/mgb111/ar-avatar/main/avatar.glb';
+
+        // Gesture control variables
+        let activeGesture = null;
+        let initialScale = new THREE.Vector3();
+        let initialPinchDistance = 0;
+        let groundPlane = null;
+        const raycaster = new THREE.Raycaster();
+        const touchPos = new THREE.Vector2();
 
         init();
 
         function init() {
-            // Scene Setup
             scene = new THREE.Scene();
             clock = new THREE.Clock();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0, 1.6, 2.5);
 
-            // Lighting
             const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
             scene.add(ambientLight);
             const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
             directionalLight.position.set(1, 1, 1);
             scene.add(directionalLight);
 
-            // Renderer
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.xr.enabled = true;
             document.body.appendChild(renderer.domElement);
 
-            // Controls
             controls = new OrbitControls(camera, renderer.domElement);
             controls.target.set(0, 1, 0);
             controls.update();
-            controls.enabled = false; // Disable controls until we are out of AR
+            controls.enabled = true;
 
-            // Load Default Model
             loadModel(defaultAvatarUrl);
 
-            // Event Listeners
-            avatarUpload.addEventListener('change', handleAvatarUpload);
-            speakButton.addEventListener('click', speak);
+            playPauseButton.addEventListener('click', togglePlayPause);
             window.addEventListener('resize', onWindowResize);
+            renderer.domElement.addEventListener('touchstart', onTouchStart, { passive: false });
+            renderer.domElement.addEventListener('touchmove', onTouchMove, { passive: false });
+            renderer.domElement.addEventListener('touchend', onTouchEnd);
             
-            // Augmented Reality Setup
             setupAR();
-
-            // Pre-load voices
             populateVoiceList();
             if (speechSynthesis.onvoiceschanged !== undefined) {
                 speechSynthesis.onvoiceschanged = populateVoiceList;
             }
-
-            // Start Animation Loop
             renderer.setAnimationLoop(animate);
         }
 
@@ -221,12 +192,12 @@
                 requiredFeatures: ['hit-test'],
                 onSessionStart: () => {
                     arButtonContainer.style.display = 'none';
-                    uiContainer.style.display = 'none'; 
                     controls.enabled = false;
                 },
                  onSessionEnd: () => {
                     arButtonContainer.style.display = 'flex';
-                    uiContainer.style.display = 'none';
+                    arControlsContainer.style.display = 'none';
+                    window.speechSynthesis.cancel();
                     controls.enabled = true;
                      if(model) {
                        model.position.set(0, 0, 0);
@@ -236,11 +207,9 @@
             });
             arButton.id = 'ar-button';
             arButton.textContent = "Enter Augmented Reality";
-            arButtonContainer.innerHTML = ''; // Clear placeholder
+            arButtonContainer.innerHTML = '';
             arButtonContainer.appendChild(arButton);
 
-
-            // Reticle for placing object
             reticle = new THREE.Mesh(
                 new THREE.RingGeometry(0.05, 0.07, 32).rotateX(-Math.PI / 2),
                 new THREE.MeshBasicMaterial()
@@ -258,8 +227,9 @@
             if (reticle.visible && model) {
                 model.position.setFromMatrixPosition(reticle.matrix);
                 model.visible = true;
-                // Show the UI once the model is placed
-                uiContainer.style.display = 'flex';
+                groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -model.position.y);
+                arControlsContainer.style.display = 'flex';
+                speak(); 
             }
         }
         
@@ -272,19 +242,15 @@
             }
             if (mixer) mixer.update(clock.getDelta());
             
-            // Handle Lip Sync
             handleLipSync();
             
-            // Handle Augmented Reality Hit Test
             if (frame) {
                 const referenceSpace = renderer.xr.getReferenceSpace();
                 const session = renderer.xr.getSession();
 
                 if (hitTestSourceRequested === false) {
                     session.requestReferenceSpace('viewer').then(referenceSpace => {
-                        session.requestHitTestSource({ space: referenceSpace }).then(source => {
-                            hitTestSource = source;
-                        });
+                        session.requestHitTestSource({ space: referenceSpace }).then(source => hitTestSource = source);
                     });
                     session.addEventListener('end', () => {
                         hitTestSourceRequested = false;
@@ -308,23 +274,11 @@
             renderer.render(scene, camera);
         }
 
-        function handleAvatarUpload(event) {
-            const file = event.target.files[0];
-            if (file) {
-                const url = URL.createObjectURL(file);
-                loadModel(url, () => URL.revokeObjectURL(url));
-            }
-        }
-
         function loadModel(url, onLoadedCallback = () => {}) {
             loadingOverlay.style.display = 'flex';
             const loader = new GLTFLoader();
             
-            if(model) {
-                scene.remove(model);
-                model = null;
-                jawOpenMorphTargetIndex = null;
-            }
+            if(model) scene.remove(model);
 
             loader.load(url, (gltf) => {
                 model = gltf.scene;
@@ -341,7 +295,7 @@
 
                 model.traverse((node) => {
                     if (node.isMesh && node.morphTargetDictionary) {
-                        const possibleNames = ['jawOpen', 'mouthOpen', 'v_jaw_open', 'mouth_open'];
+                        const possibleNames = ['jawOpen', 'mouthOpen'];
                         for (const name of possibleNames) {
                             if (node.morphTargetDictionary[name] !== undefined) {
                                 jawOpenMorphTargetIndex = node.morphTargetDictionary[name];
@@ -353,71 +307,91 @@
 
                 if (gltf.animations && gltf.animations.length) {
                     mixer = new THREE.AnimationMixer(model);
-                    const idleAction = mixer.clipAction(gltf.animations.find(clip => clip.name.toLowerCase().includes('idle')) || gltf.animations[0]);
+                    const idleAction = mixer.clipAction(gltf.animations[0]);
                     idleAction.play();
                 }
                 
                 loadingOverlay.style.display = 'none';
-                if (renderer.xr.isPresenting) {
-                   model.visible = false;
-                   reticle.visible = true;
-                } else {
-                   model.visible = true;
-                }
+                model.visible = !renderer.xr.isPresenting;
 
                 onLoadedCallback();
-            }, 
-            undefined, 
-            (error) => {
-                console.error(error);
-                loadingOverlay.innerHTML = '<span>Error loading model. Please try another one.</span>';
-            });
+            }, undefined, (error) => console.error(error));
+        }
+
+        function togglePlayPause() {
+            if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+                window.speechSynthesis.pause();
+            } else if (window.speechSynthesis.paused) {
+                window.speechSynthesis.resume();
+            } else {
+                speak();
+            }
         }
         
         function speak() {
             const text = scriptInput.value;
-            if (!text || !model) {
-                return;
-            }
-
-            if (jawOpenMorphTargetIndex === null) {
-                console.warn("Could not find a 'jawOpen' or similar mouth shape on this avatar. Lip-sync is disabled.");
-            }
+            if (!text || !model) return;
+            if (jawOpenMorphTargetIndex === null) console.warn("Lip-sync disabled.");
             
             window.speechSynthesis.cancel();
-
             const utterance = new SpeechSynthesisUtterance(text);
+            const maleVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Male'));
+            utterance.voice = maleVoice || voices.find(v => v.lang.startsWith('en'));
 
-            const maleVoice = voices.find(voice => 
-                voice.lang.startsWith('en') && 
-                (voice.name.includes('Male') || voice.name.includes('Google US English') || voice.name.includes('David'))
-            );
-
-            if (maleVoice) {
-                utterance.voice = maleVoice;
-            } else {
-                console.warn("Male voice not found, using default.");
-            }
+            utterance.onstart = () => { playIcon.style.display = 'none'; pauseIcon.style.display = 'block'; };
+            utterance.onpause = () => { playIcon.style.display = 'block'; pauseIcon.style.display = 'none'; };
+            utterance.onresume = () => { playIcon.style.display = 'none'; pauseIcon.style.display = 'block'; };
+            utterance.onend = () => { playIcon.style.display = 'block'; pauseIcon.style.display = 'none'; };
 
             window.speechSynthesis.speak(utterance);
         }
 
         function handleLipSync() {
             if (window.speechSynthesis.speaking && jawOpenMorphTargetIndex !== null) {
-                const now = Date.now();
-                const influence = (Math.sin(now * 0.025) + 1) / 2;
-                model.traverse(child => {
-                    if (child.isMesh && child.morphTargetInfluences) {
-                        child.morphTargetInfluences[jawOpenMorphTargetIndex] = influence * 0.8;
-                    }
-                });
+                const influence = (Math.sin(Date.now() * 0.025) + 1) / 2;
+                model.traverse(c => c.isMesh && c.morphTargetInfluences && (c.morphTargetInfluences[jawOpenMorphTargetIndex] = influence * 0.8));
             } else if (model && jawOpenMorphTargetIndex !== null) {
-                model.traverse(child => {
-                    if (child.isMesh && child.morphTargetInfluences) {
-                        child.morphTargetInfluences[jawOpenMorphTargetIndex] = 0;
-                    }
-                });
+                model.traverse(c => c.isMesh && c.morphTargetInfluences && (c.morphTargetInfluences[jawOpenMorphTargetIndex] = 0));
             }
+        }
+
+        function onTouchStart(event) {
+            if (!renderer.xr.isPresenting || !model || !model.visible) return;
+            if (event.touches.length === 1) activeGesture = 'pan';
+            else if (event.touches.length === 2) {
+                activeGesture = 'scale';
+                initialScale.copy(model.scale);
+                initialPinchDistance = getPinchDistance(event.touches);
+            }
+        }
+
+        function onTouchMove(event) {
+            if (!renderer.xr.isPresenting || !model || !model.visible || !activeGesture) return;
+            event.preventDefault();
+
+            if (activeGesture === 'pan' && event.touches.length === 1) {
+                touchPos.x = (event.touches[0].clientX / window.innerWidth) * 2 - 1;
+                touchPos.y = -(event.touches[0].clientY / window.innerHeight) * 2 + 1;
+                raycaster.setFromCamera(touchPos, camera);
+                const intersectPoint = new THREE.Vector3();
+                raycaster.ray.intersectPlane(groundPlane, intersectPoint);
+                if (intersectPoint) model.position.set(intersectPoint.x, model.position.y, intersectPoint.z);
+            } else if (activeGesture === 'scale' && event.touches.length === 2) {
+                const currentPinchDistance = getPinchDistance(event.touches);
+                const scaleFactor = currentPinchDistance / initialPinchDistance;
+                model.scale.copy(initialScale).multiplyScalar(scaleFactor);
+            }
+        }
+
+        function onTouchEnd(event) {
+            if (event.touches.length === 0) activeGesture = null;
+            else if (event.touches.length === 1) activeGesture = 'pan';
+        }
+
+        function getPinchDistance(touches) {
+            const dx = touches[0].clientX - touches[1].clientX;
+            const dy = touches[0].clientY - touches[1].clientY;
+            return Math.sqrt(dx * dx + dy * dy);
         }
 
         function onWindowResize() {
