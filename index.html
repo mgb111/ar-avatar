@@ -1,56 +1,56 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Ready Player Me Avatar LipSync</title>
-  <style>
-    body { margin: 0; overflow: hidden; background: #222; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; color: #fff; font-family: sans-serif; }
-    #controls { position: absolute; top: 10px; display: flex; gap: 10px; }
-    input { padding: 5px; width: 300px; }
-    button { padding: 5px 10px; cursor: pointer; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Augmented Reality Avatar</title>
+    
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
+
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+        }
+        h1 {
+            color: #333;
+        }
+        p {
+            color: #555;
+            margin: 0 20px 20px;
+            text-align: center;
+        }
+        model-viewer {
+            width: 80%;
+            height: 60%;
+            max-width: 600px;
+            border-radius: 12px;
+            background-color: #fff;
+        }
+    </style>
 </head>
 <body>
-  <div id="controls">
-    <input type="text" id="scriptInput" placeholder="Type your script here" />
-    <button id="speakBtn">Speak</button>
-  </div>
 
-  <script type="module">
-    import { showAvatar } from './talkinghead.mjs';
+    <h1>My Avatar</h1>
+    <p>On a compatible mobile device, tap the icon in the bottom right to view in Augmented Reality.</p>
 
-    let avatar;
+    <model-viewer src="avatar.glb"
+                  ios-src="avatar.usdz"
+                  alt="A 3D model of my avatar"
+                  ar
+                  ar-modes="webxr scene-viewer quick-look"
+                  camera-controls
+                  auto-rotate
+                  shadow-intensity="1">
+    </model-viewer>
 
-    async function initAvatar() {
-      avatar = await showAvatar({
-        modelUrl: './avatar.glb',  // Make sure avatar.glb is in same directory
-        autoPlay: false // We'll trigger speech manually
-      });
-    }
-
-    initAvatar();
-
-    // Speak function using Web Speech API
-    function speakText(text) {
-      if (!avatar) return;
-
-      // Web Speech API
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-US';
-      utterance.rate = 1; // speed
-      utterance.pitch = 1; // pitch
-
-      // Trigger avatar lip-sync using TalkingHead
-      avatar.speak(text);
-
-      // Play speech
-      speechSynthesis.speak(utterance);
-    }
-
-    document.getElementById('speakBtn').onclick = () => {
-      const text = document.getElementById('scriptInput').value.trim();
-      if (text) speakText(text);
-    };
-  </script>
 </body>
 </html>
