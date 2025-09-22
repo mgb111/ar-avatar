@@ -227,9 +227,22 @@ function setupSpeechRecognition(){
             const transcript=event.results[0][0].transcript;
             queueAI(transcript);
         };
-        speechRecognition.onstart=()=>{ isListening=true; micButton.classList.add('bg-red-600','hover:bg-red-700'); micButton.classList.remove('bg-blue-600','hover:bg-blue-700'); };
-        speechRecognition.onend=()=>{ isListening=false; micButton.classList.remove('bg-red-600','hover:bg-red-700'); micButton.classList.add('bg-blue-600','hover:bg-blue-700'); };
-        speechRecognition.onerror=(event)=>{ speechStatus.textContent=`Speech Recognition: ❌ ${event.error}`; speechStatus.style.color='#ef4444'; showStatusMessage(`Microphone error: ${event.error}`); };
+        speechRecognition.onstart=()=>{ isListening=true; speechStatus.textContent='Speech Recognition: 🎤 Listening'; speechStatus.style.color='#10b981'; micButton.classList.add('bg-red-600','hover:bg-red-700'); micButton.classList.remove('bg-blue-600','hover:bg-blue-700'); };
+        speechRecognition.onend=()=>{ isListening=false; speechStatus.textContent='Speech Recognition: ⏹️ Stopped'; speechStatus.style.color='#d1d5db'; micButton.classList.remove('bg-red-600','hover:bg-red-700'); micButton.classList.add('bg-blue-600','hover:bg-blue-700'); };
+        speechRecognition.onaudiostart=()=>{ speechStatus.textContent='Speech Recognition: 🎧 Audio detected'; speechStatus.style.color='#10b981'; };
+        speechRecognition.onaudioend=()=>{ /* often fires quickly on Android */ };
+        speechRecognition.onspeechstart=()=>{ speechStatus.textContent='Speech Recognition: 🗣️ Speech detected'; speechStatus.style.color='#10b981'; };
+        speechRecognition.onspeechend=()=>{ /* recognition will finalize shortly */ };
+        speechRecognition.onnomatch=()=>{ speechStatus.textContent='Speech Recognition: 🤔 No match'; speechStatus.style.color='#fbbf24'; showStatusMessage('Did not catch that. Please try again.', false); };
+        speechRecognition.onerror=(event)=>{
+            let hint='';
+            if(event.error==='not-allowed' || event.error==='denied') hint='Please allow microphone access in your browser settings.';
+            if(event.error==='no-speech') hint='No speech detected. Try speaking closer to the mic.';
+            if(event.error==='aborted') hint='Recognition aborted. Tap the mic again.';
+            speechStatus.textContent=`Speech Recognition: ❌ ${event.error}`;
+            speechStatus.style.color='#ef4444';
+            showStatusMessage(`Microphone error: ${event.error}. ${hint}`);
+        };
 
         speechStatus.textContent='Speech Recognition: ✅ Supported'; speechStatus.style.color='#10b981';
     } else { speechStatus.textContent='Speech Recognition: ❌ Not Supported'; speechStatus.style.color='#ef4444'; micButton.disabled=true; showStatusMessage('Voice input not supported',false); }
