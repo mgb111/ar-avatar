@@ -25,13 +25,13 @@
         #container {
             width: 100vw;
             height: 100vh;
-            position: relative; /* Required by the TalkingHead library */
+            position: relative;
         }
         #controls {
             position: absolute;
             top: 20px;
             left: 20px;
-            z-index: 10; /* Ensures controls appear on top of the 3D scene */
+            z-index: 10;
             padding: 10px;
             background: rgba(0,0,0,0.5);
             border-radius: 8px;
@@ -45,7 +45,6 @@
 </head>
 <body>
     <div id="container"></div>
-
     <div id="controls">
         <button id="speak-button">Play Introduction</button>
         <p id="status">Status: Ready</p>
@@ -56,13 +55,11 @@
         import { TalkingHead } from 'talkinghead';
         import { HeadTTS } from 'headtts';
 
-        // 1. Scene Setup
         const mainScene = new THREE.Scene();
         mainScene.background = new THREE.Color(0xeeeeee);
         const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 1.6, 2.5);
 
-        // Add lighting to the main scene
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
         mainScene.add(ambientLight);
         const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
@@ -72,29 +69,20 @@
         const statusElement = document.getElementById('status');
         let head;
         let headtts;
-        const myPredefinedScript = "Hello. After a lot of troubleshooting, I am now working correctly.";
+        const myPredefinedScript = "This is the final version. Everything is now working correctly.";
 
-        // 2. Initialization Function
         async function initializeAvatar() {
             statusElement.innerText = 'Status: Loading...';
-            
-            // Get the actual HTML element from the page
             const container = document.getElementById('container'); 
-
-            // Initialize TalkingHead with the HTML container
             head = new TalkingHead(container, {
                 camera: camera,
                 ttsEndpoint: "none"
             });
-
-            // Add the TalkingHead's internal scene to our main scene
             mainScene.add(head.scene);
-
             await head.loadModel('avatar.glb');
             head.setVisible(true);
             statusElement.innerText = 'Status: Avatar Loaded.';
             
-            statusElement.innerText = 'Status: Loading TTS Engine...';
             headtts = new HeadTTS();
             statusElement.innerText = 'Status: Ready.';
 
@@ -108,7 +96,6 @@
             };
         }
 
-        // 3. Event Listener
         document.getElementById('speak-button').addEventListener('click', () => {
             if (!head || !headtts) {
                 alert('Avatar or TTS not initialized yet.');
@@ -121,13 +108,10 @@
             }
         });
 
-        // 4. Animation Loop
+        // The animate function simply keeps the frame loop running.
+        // The TalkingHead library handles its own updates and rendering.
         function animate() {
             requestAnimationFrame(animate);
-            if (head) {
-                // The library handles its own rendering, so we just need to call update
-                head.update(performance.now());
-            }
         }
 
         initializeAvatar();
