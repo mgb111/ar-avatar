@@ -218,14 +218,22 @@ function setupSpeechRecognition(){
     const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
     if(SpeechRecognition){
         speechRecognition=new SpeechRecognition();
-        speechRecognition.continuous=false;
-        speechRecognition.lang='en-US';
-        speechRecognition.interimResults=false;
+        // Android Chrome works better with interimResults and sometimes continuous
+        speechRecognition.continuous=true;
+        speechRecognition.lang=navigator.language||'en-US';
+        speechRecognition.interimResults=true;
         speechRecognition.maxAlternatives=1;
 
         speechRecognition.onresult=(event)=>{
-            const transcript=event.results[0][0].transcript;
-            queueAI(transcript);
+            // Build the full transcript including interim results
+            let interim=''; let final='';
+            for(let i=event.resultIndex;i<event.results.length;i++){
+                const res=event.results[i];
+                if(res.isFinal) final += res[0].transcript;
+                else interim += res[0].transcript;
+            }
+            if(interim){ speechStatus.textContent=`Speech Recognition: 📝 ${interim}`; speechStatus.style.color='#10b981'; }
+            if(final){ queueAI(final.trim()); }
         };
         speechRecognition.onstart=()=>{ isListening=true; speechStatus.textContent='Speech Recognition: 🎤 Listening'; speechStatus.style.color='#10b981'; micButton.classList.add('bg-red-600','hover:bg-red-700'); micButton.classList.remove('bg-blue-600','hover:bg-blue-700'); };
         speechRecognition.onend=()=>{ isListening=false; speechStatus.textContent='Speech Recognition: ⏹️ Stopped'; speechStatus.style.color='#d1d5db'; micButton.classList.remove('bg-red-600','hover:bg-red-700'); micButton.classList.add('bg-blue-600','hover:bg-blue-700'); };
@@ -233,7 +241,19 @@ function setupSpeechRecognition(){
         speechRecognition.onaudioend=()=>{ /* often fires quickly on Android */ };
         speechRecognition.onspeechstart=()=>{ speechStatus.textContent='Speech Recognition: 🗣️ Speech detected'; speechStatus.style.color='#10b981'; };
         speechRecognition.onspeechend=()=>{ /* recognition will finalize shortly */ };
-        speechRecognition.onnomatch=()=>{ speechStatus.textContent='Speech Recognition: 🤔 No match'; speechStatus.style.color='#fbbf24'; showStatusMessage('Did not catch that. Please try again.', false); };
+        // Single auto-retry on no match (some Android builds require a quick restart)
+        let didRetryNoMatch=false;
+        speechRecognition.onnomatch=()=>{
+            speechStatus.textContent='Speech Recognition: 🤔 No match';
+            speechStatus.style.color='#fbbf24';
+            if(!didRetryNoMatch){
+                didRetryNoMatch=true;
+                try{ speechRecognition.abort(); }catch{}
+                setTimeout(()=>{ try{ speechRecognition.start(); }catch{} }, 200);
+            } else {
+                showStatusMessage('Did not catch that. Please try again.', false);
+            }
+        };
         speechRecognition.onerror=(event)=>{
             let hint='';
             if(event.error==='not-allowed' || event.error==='denied') hint='Please allow microphone access in your browser settings.';
@@ -243,6 +263,15 @@ function setupSpeechRecognition(){
             speechStatus.style.color='#ef4444';
             showStatusMessage(`Microphone error: ${event.error}. ${hint}`);
         };
+        // Reset retry flag when session ends
+        speechRecognition.onend=(()=>{
+            const origEnd = speechRecognition.onend;
+            return ()=>{
+                didRetryNoMatch=false;
+                isListening=false; speechStatus.textContent='Speech Recognition: ⏹️ Stopped'; speechStatus.style.color='#d1d5db'; micButton.classList.remove('bg-red-600','hover:bg-red-700'); micButton.classList.add('bg-blue-600','hover:bg-blue-700');
+                if(typeof origEnd==='function') origEnd();
+            };
+        })();
 
         speechStatus.textContent='Speech Recognition: ✅ Supported'; speechStatus.style.color='#10b981';
     } else { speechStatus.textContent='Speech Recognition: ❌ Not Supported'; speechStatus.style.color='#ef4444'; micButton.disabled=true; showStatusMessage('Voice input not supported',false); }
@@ -251,8 +280,14 @@ function setupSpeechRecognition(){
 function toggleListening(){
     if(isListening||isSpeaking||isAIThinking) return;
     if(currentAudio) currentAudio.pause();
+    // SpeechRecognition requires secure context (https or localhost)
+    const isSecure = location.protocol==='https:' || location.hostname==='localhost';
+    if(!isSecure){ showStatusMessage('Voice input requires HTTPS. Please use a secure URL.'); return; }
     if(navigator.mediaDevices?.getUserMedia){
-        navigator.mediaDevices.getUserMedia({audio:true}).then(()=>{ speechRecognition.start(); }).catch((e)=>{ showStatusMessage('Microphone access denied'); });
+        navigator.mediaDevices.getUserMedia({audio:true}).then(()=>{
+            try{ speechRecognition.abort(); }catch{}
+            try{ speechRecognition.start(); }catch{ showStatusMessage('Unable to start speech recognition'); }
+        }).catch(()=>{ showStatusMessage('Microphone access denied'); });
     } else if(speechRecognition){ speechRecognition.start(); } else { showStatusMessage('Voice input unavailable'); }
 }
 
