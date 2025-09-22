@@ -8,8 +8,10 @@
   <script type="importmap">
   {
     "imports": {
-      "talkinghead": "https://cdn.jsdelivr.net/npm/@met4citizen/talkinghead@1.6.0/+esm",
-      "headtts": "https://cdn.jsdelivr.net/npm/@met4citizen/headtts@0.2.1/+esm"
+      "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/",
+      "@met4citizen/talkinghead": "https://cdn.jsdelivr.net/npm/@met4citizen/talkinghead@1.6.0/+esm",
+      "@met4citizen/headtts": "https://cdn.jsdelivr.net/npm/@met4citizen/headtts@0.2.1/+esm"
     }
   }
   </script>
@@ -38,52 +40,80 @@
   </div>
 
   <script type="module">
-    import { TalkingHead } from 'talkinghead';
-    import { HeadTTS } from 'headtts';
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { TalkingHead } from '@met4citizen/talkinghead';
+    import { HeadTTS } from '@met4citizen/headtts';
 
     const container = document.getElementById('container');
     const statusElement = document.getElementById('status');
 
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xeeeeee);
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 1.6, 2.5);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    container.appendChild(renderer.domElement);
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
+    scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
+    directionalLight.position.set(1, 1, 1);
+    scene.add(directionalLight);
+
     let head;
     let headtts;
-    const myPredefinedScript = "The final error has been fixed. I should now be working perfectly.";
 
     async function initializeAvatar() {
-      try {
-        statusElement.innerText = 'Status: Loading Avatar...';
-        head = new TalkingHead(container, { ttsEndpoint: "none" });
-        await head.loadModel('avatar.glb');
+      statusElement.innerText = 'Status: Loading...';
+
+      head = new TalkingHead(scene, {
+        camera,
+        lipsyncModules: [], // disable missing lipsync files
+        ttsEndpoint: "none"
+      });
+
+      statusElement.innerText = 'Status: Loading Model...';
+
+      const loader = new GLTFLoader();
+      loader.load('avatar.glb', (gltf) => {
+        head.addAvatar(gltf.scene); // safe now because three is shared
         head.setVisible(true);
         statusElement.innerText = 'Status: Avatar Loaded.';
+      }, undefined, (err) => {
+        console.error("Model load error:", err);
+        statusElement.innerText = 'Status: Model Load Failed.';
+      });
 
-        statusElement.innerText = 'Status: Loading TTS Engine...';
-        headtts = new HeadTTS();
-        statusElement.innerText = 'Status: Ready.';
+      headtts = new HeadTTS();
+      headtts.onmessage = (message) => {
+        if (message.type === "audio") {
+          head.speakAudio(message.data);
+        } else if (message.type === "error") {
+          console.error("HeadTTS Error:", message.data.error);
+          statusElement.innerText = 'Status: TTS Error.';
+        }
+      };
 
-        headtts.onmessage = (message) => {
-          if (message.type === "audio") {
-            head.speakAudio(message.data);
-          } else if (message.type === "error") {
-            console.error("HeadTTS Error:", message.data.error);
-            statusElement.innerText = 'Status: TTS Error.';
-          }
-        };
-      } catch (error) {
-        console.error("Initialization error:", error);
-        statusElement.innerText = 'Status: Initialization Failed.';
-      }
+      statusElement.innerText = 'Status: Ready.';
     }
 
     document.getElementById('speak-button').addEventListener('click', () => {
-      if (!head || !headtts) {
-        alert('Avatar or TTS not initialized yet.');
-        return;
-      }
-      statusElement.innerText = 'Status: Synthesizing speech...';
-      headtts.synthesize({ input: myPredefinedScript });
+      if (!head || !headtts) return;
+      statusElement.innerText = 'Status: Speaking...';
+      headtts.synthesize({ input: "The final error has been fixed. I should now be working perfectly." });
     });
 
+    function animate() {
+      requestAnimationFrame(animate);
+      if (head) head.update(performance.now());
+      renderer.render(scene, camera);
+    }
+
     initializeAvatar();
+    animate();
   </script>
 </body>
 </html>
