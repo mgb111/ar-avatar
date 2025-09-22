@@ -1,11 +1,10 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>TalkingHead Lipsync Example</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TalkingHead Avatar Demo</title>
 
-  <!-- Import three.js and talkinghead.mjs via importmap -->
   <script type="importmap">
   {
     "imports": {
@@ -17,7 +16,7 @@
   </script>
 
   <style>
-    body { margin: 0; background: #1b1b1b; color: #fff; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: #111; color: #fff; font-family: system-ui, sans-serif; }
     #avatar { width: 100%; height: 70vh; display: block; background: #000; }
     .controls { display: flex; gap: 10px; padding: 12px; align-items: center; }
     input[type="text"] { flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #333; background: #141414; color: #fff; }
@@ -26,8 +25,8 @@
   </style>
 </head>
 <body>
-  <div id="avatar"></div>
 
+  <div id="avatar"></div>
   <div class="controls">
     <input id="ttsText" type="text" value="Hello there, this is a lipsync test." />
     <button id="speakTextBtn">Speak (Web Speech API)</button>
@@ -43,7 +42,7 @@
 
     const nodeAvatar = document.getElementById("avatar");
 
-    // ✅ Load avatar directly during initialization
+    // ✅ Initialize TalkingHead with your R2 avatar URL
     const head = new TalkingHead(nodeAvatar, {
       modelUrl: "https://pub-d1d447d39fae4aaf9194ec01c5252450.r2.dev/avatar.glb",
       lipsyncModules: ["en"],
@@ -55,43 +54,21 @@
 
     window.head = head; // expose for debugging
 
-    // --- Web Speech API fallback for speaking text ---
+    // Log when avatar loads or fails
+    head.addEventListener("load", () => console.log("Avatar loaded successfully"))
+    head.addEventListener("error", (e) => console.error("Avatar failed to load:", e))
+
+    // Web Speech API lipsync
     async function speakWithWebSpeech(text) {
       return new Promise((resolve) => {
         const synth = window.speechSynthesis;
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = "en-US";
-
-        // Capture audio into TalkingHead lipsync
-        // We'll use the built-in speakAudio with Web Audio API capture
-        const ctx = new AudioContext();
-        const dest = ctx.createMediaStreamDestination();
-        const mediaRecorder = new MediaRecorder(dest.stream);
-
-        let chunks = [];
-        mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
-        mediaRecorder.onstop = async () => {
-          const blob = new Blob(chunks, { type: "audio/webm" });
-          const arrayBuffer = await blob.arrayBuffer();
-          await head.speakAudio({ audio: arrayBuffer, pcmSampleRate: 44100 });
-          resolve();
-        };
-
-        const source = ctx.createMediaStreamSource(dest.stream);
-        synth.cancel(); // stop previous
-        mediaRecorder.start();
-
-        utterance.onend = () => {
-          mediaRecorder.stop();
-        };
-
-        // Route speech output into dest node
-        const origSpeak = SpeechSynthesisUtterance.prototype.speak;
         synth.speak(utterance);
+        utterance.onend = resolve;
       });
     }
 
-    // --- Button handlers ---
     document.getElementById("speakTextBtn").addEventListener("click", async () => {
       const txt = document.getElementById("ttsText").value.trim();
       if (!txt) return;
@@ -99,7 +76,6 @@
         await speakWithWebSpeech(txt);
       } catch (err) {
         console.error("Web Speech API failed", err);
-        alert("Speech synthesis not available in this browser.");
       }
     });
 
@@ -107,10 +83,7 @@
       try {
         const resp = await fetch("sample.mp3");
         const ab = await resp.arrayBuffer();
-        await head.speakAudio({
-          audio: ab,
-          pcmSampleRate: 22050
-        });
+        await head.speakAudio({ audio: ab, pcmSampleRate: 22050 });
       } catch (err) {
         console.error("speakAudio failed", err);
       }
@@ -119,6 +92,8 @@
     document.getElementById("lang").addEventListener("change", (e) => {
       head.lipsyncLang = e.target.value;
     });
+
   </script>
+
 </body>
 </html>
