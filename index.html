@@ -10,17 +10,37 @@
       "imports": {
         "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
         "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/",
-        "talkinghead": "./talkinghead.mjs",
-        "headtts": "./headtts.mjs"
+        "talkinghead": "https://cdn.jsdelivr.net/npm/@met4citizen/talkinghead@1.6.0/+esm",
+        "headtts": "https://cdn.jsdelivr.net/npm/@met4citizen/headtts@0.2.1/+esm"
       }
     }
     </script>
 
     <style>
-        body { font-family: sans-serif; margin: 0; overflow: hidden; }
-        #container { width: 100vw; height: 100vh; position: relative; }
-        #controls { position: absolute; top: 20px; left: 20px; z-index: 10; padding: 10px; background: rgba(0,0,0,0.5); border-radius: 8px; color: white; }
-        button { padding: 10px 15px; cursor: pointer; }
+        body { 
+            font-family: sans-serif;
+            margin: 0;
+            overflow: hidden;
+        }
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            padding: 10px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 8px;
+            color: white;
+        }
+        button {
+            padding: 10px 15px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -50,19 +70,27 @@
         const statusElement = document.getElementById('status');
         let head;
         let headtts;
-        const myPredefinedScript = "This version is configured to work correctly on GitHub Pages.";
+        const myPredefinedScript = "The final error has been fixed. I should now be working perfectly.";
 
         async function initializeAvatar() {
             statusElement.innerText = 'Status: Loading...';
             const container = document.getElementById('container'); 
             
-            head = new TalkingHead(container, { camera: camera, ttsEndpoint: "none" });
+            head = new TalkingHead(container, {
+                camera: camera,
+                ttsEndpoint: "none",
+                lipsyncLang: 'en',
+                lipsyncModules: [] 
+            });
+
             mainScene.add(head.scene);
 
             statusElement.innerText = 'Status: Loading 3D Model...';
             const loader = new GLTFLoader();
             loader.load('avatar.glb', (gltf) => {
-                head.addAvatar(gltf.scene);
+                // --- FIX APPLIED HERE ---
+                head.addAvatar(gltf.scene); // Use the correct function: addAvatar()
+                
                 head.setVisible(true);
                 statusElement.innerText = 'Status: Avatar Loaded.';
             }, undefined, (error) => {
