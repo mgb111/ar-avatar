@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Augmented Reality Avatar</title>
+    
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
+
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+        }
+        h1 {
+            color: #333;
+        }
+        p {
+            color: #555;
+            margin: 0 20px 20px;
+            text-align: center;
+        }
+        model-viewer {
+            width: 80%;
+            height: 60%;
+            max-width: 600px;
+            border-radius: 12px;
+            background-color: #fff;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>My Avatar</h1>
+    <p>On a compatible mobile device, tap the icon in the bottom right to view in Augmented Reality.</p>
+
+    <model-viewer src="avatar.glb"
+                  ios-src="avatar.usdz"
+                  alt="A 3D model of my avatar"
+                  ar
+                  ar-modes="webxr scene-viewer quick-look"
+                  camera-controls
+                  auto-rotate
+                  shadow-intensity="1">
+    </model-viewer>
+
+</body>
+</html>
