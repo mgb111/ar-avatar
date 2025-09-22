@@ -267,7 +267,7 @@ async function getAIResponse(userPrompt){
         });
         if(!response.ok){
             let detail = '';
-            try { detail = JSON.stringify(await response.json()); }
+            try { detail = JSON.stringify(await response.clone().json()); }
             catch { detail = (await response.text()).slice(0,200); }
             throw new Error(`API error ${response.status}: ${detail}`);
         }
@@ -292,7 +292,7 @@ async function generateAndPlaySpeech(text){
         });
         if(!response.ok){
             let detail = '';
-            try { detail = JSON.stringify(await response.json()); }
+            try { detail = JSON.stringify(await response.clone().json()); }
             catch { detail = (await response.text()).slice(0,200); }
             throw new Error(`TTS generation failed (${response.status}): ${detail}`);
         }
