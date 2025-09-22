@@ -70,17 +70,18 @@
         const statusElement = document.getElementById('status');
         let head;
         let headtts;
-        const myPredefinedScript = "Hello. This is a demonstration of the talking avatar with English lip-sync.";
+        const myPredefinedScript = "Hello. The final loading error should now be fixed.";
 
         async function initializeAvatar() {
             statusElement.innerText = 'Status: Loading...';
             const container = document.getElementById('container'); 
             
-            // Initialize with English lip-sync
             head = new TalkingHead(container, {
                 camera: camera,
                 ttsEndpoint: "none",
-                lipsyncLang: 'en' 
+                lipsyncLang: 'en',
+                // FIX: Tell the library not to load any external modules
+                lipsyncModules: [] 
             });
 
             mainScene.add(head.scene);
@@ -115,7 +116,6 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            // The TalkingHead library handles its own updates.
         }
 
         initializeAvatar();
