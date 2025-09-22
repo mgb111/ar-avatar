@@ -45,7 +45,6 @@
 </head>
 <body>
     <div id="container"></div>
-
     <div id="controls">
         <button id="speak-button">Play Introduction</button>
         <p id="status">Status: Ready</p>
@@ -53,6 +52,7 @@
 
     <script type="module">
         import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'; // Import GLTFLoader
         import { TalkingHead } from 'talkinghead';
         import { HeadTTS } from 'headtts';
 
@@ -70,7 +70,7 @@
         const statusElement = document.getElementById('status');
         let head;
         let headtts;
-        const myPredefinedScript = "Hello. The final loading error should now be fixed.";
+        const myPredefinedScript = "The model loading process has now been corrected.";
 
         async function initializeAvatar() {
             statusElement.innerText = 'Status: Loading...';
@@ -80,15 +80,27 @@
                 camera: camera,
                 ttsEndpoint: "none",
                 lipsyncLang: 'en',
-                // FIX: Tell the library not to load any external modules
                 lipsyncModules: [] 
             });
 
             mainScene.add(head.scene);
-            await head.loadModel('avatar.glb');
-            head.setVisible(true);
-            statusElement.innerText = 'Status: Avatar Loaded.';
+
+            // --- FIX APPLIED HERE: Load model with GLTFLoader ---
+            statusElement.innerText = 'Status: Loading 3D Model...';
+            const loader = new GLTFLoader();
+            loader.load('avatar.glb', (gltf) => {
+                // Model loaded successfully
+                head.setModel(gltf.scene); // Pass the loaded scene to the library
+                head.setVisible(true);
+                statusElement.innerText = 'Status: Avatar Loaded.';
+            }, undefined, (error) => {
+                // Error handling for model loading
+                console.error('An error happened while loading the model:', error);
+                statusElement.innerText = 'Error: Could not load 3D model.';
+            });
+            // --- END OF FIX ---
             
+            statusElement.innerText = 'Status: Loading TTS Engine...';
             headtts = new HeadTTS();
             statusElement.innerText = 'Status: Ready.';
 
