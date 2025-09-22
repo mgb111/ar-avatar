@@ -1,135 +1,89 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Talking Avatar</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Talking Avatar</title>
 
-    <script type="importmap">
-    {
-      "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/",
-        "talkinghead": "https://cdn.jsdelivr.net/npm/@met4citizen/talkinghead@1.6.0/+esm",
-        "headtts": "https://cdn.jsdelivr.net/npm/@met4citizen/headtts@0.2.1/+esm"
-      }
+  <script type="importmap">
+  {
+    "imports": {
+      "talkinghead": "https://cdn.jsdelivr.net/npm/@met4citizen/talkinghead@1.6.0/+esm",
+      "headtts": "https://cdn.jsdelivr.net/npm/@met4citizen/headtts@0.2.1/+esm"
     }
-    </script>
+  }
+  </script>
 
-    <style>
-        body { 
-            font-family: sans-serif;
-            margin: 0;
-            overflow: hidden;
-        }
-        #container {
-            width: 100vw;
-            height: 100vh;
-            position: relative;
-        }
-        #controls {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            z-index: 10;
-            padding: 10px;
-            background: rgba(0,0,0,0.5);
-            border-radius: 8px;
-            color: white;
-        }
-        button {
-            padding: 10px 15px;
-            cursor: pointer;
-        }
-    </style>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: sans-serif; }
+    #container { width: 100vw; height: 100vh; position: relative; }
+    #controls {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 10;
+      padding: 10px;
+      background: rgba(0,0,0,0.5);
+      border-radius: 8px;
+      color: white;
+    }
+    button { padding: 10px 15px; cursor: pointer; }
+  </style>
 </head>
 <body>
-    <div id="container"></div>
-    <div id="controls">
-        <button id="speak-button">Play Introduction</button>
-        <p id="status">Status: Ready</p>
-    </div>
+  <div id="container"></div>
+  <div id="controls">
+    <button id="speak-button">Play Introduction</button>
+    <p id="status">Status: Ready</p>
+  </div>
 
-    <script type="module">
-        import * as THREE from 'three';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-        import { TalkingHead } from 'talkinghead';
-        import { HeadTTS } from 'headtts';
+  <script type="module">
+    import { TalkingHead } from 'talkinghead';
+    import { HeadTTS } from 'headtts';
 
-        const mainScene = new THREE.Scene();
-        mainScene.background = new THREE.Color(0xeeeeee);
-        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 1.6, 2.5);
+    const container = document.getElementById('container');
+    const statusElement = document.getElementById('status');
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
-        mainScene.add(ambientLight);
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
-        directionalLight.position.set(1, 1, 1);
-        mainScene.add(directionalLight);
-        
-        const statusElement = document.getElementById('status');
-        let head;
-        let headtts;
-        const myPredefinedScript = "The final error has been fixed. I should now be working perfectly.";
+    let head;
+    let headtts;
+    const myPredefinedScript = "The final error has been fixed. I should now be working perfectly.";
 
-        async function initializeAvatar() {
-            statusElement.innerText = 'Status: Loading...';
-            const container = document.getElementById('container'); 
-            
-            head = new TalkingHead(container, {
-                camera: camera,
-                ttsEndpoint: "none",
-                lipsyncLang: 'en',
-                lipsyncModules: [] 
-            });
+    async function initializeAvatar() {
+      try {
+        statusElement.innerText = 'Status: Loading Avatar...';
+        head = new TalkingHead(container, { ttsEndpoint: "none" });
+        await head.loadModel('avatar.glb');
+        head.setVisible(true);
+        statusElement.innerText = 'Status: Avatar Loaded.';
 
-            mainScene.add(head.scene);
+        statusElement.innerText = 'Status: Loading TTS Engine...';
+        headtts = new HeadTTS();
+        statusElement.innerText = 'Status: Ready.';
 
-            statusElement.innerText = 'Status: Loading 3D Model...';
-            const loader = new GLTFLoader();
-            loader.load('avatar.glb', (gltf) => {
-                // --- FIX APPLIED HERE ---
-                head.addAvatar(gltf.scene); // Use the correct function: addAvatar()
-                
-                head.setVisible(true);
-                statusElement.innerText = 'Status: Avatar Loaded.';
-            }, undefined, (error) => {
-                console.error('An error happened while loading the model:', error);
-                statusElement.innerText = 'Error: Could not load 3D model.';
-            });
-            
-            statusElement.innerText = 'Status: Loading TTS Engine...';
-            headtts = new HeadTTS();
-            statusElement.innerText = 'Status: Ready.';
+        headtts.onmessage = (message) => {
+          if (message.type === "audio") {
+            head.speakAudio(message.data);
+          } else if (message.type === "error") {
+            console.error("HeadTTS Error:", message.data.error);
+            statusElement.innerText = 'Status: TTS Error.';
+          }
+        };
+      } catch (error) {
+        console.error("Initialization error:", error);
+        statusElement.innerText = 'Status: Initialization Failed.';
+      }
+    }
 
-            headtts.onmessage = (message) => {
-                if (message.type === "audio") {
-                    head.speakAudio(message.data);
-                } else if (message.type === "error") {
-                    console.error("HeadTTS Error:", message.data.error);
-                    statusElement.innerText = 'Status: TTS Error.';
-                }
-            };
-        }
+    document.getElementById('speak-button').addEventListener('click', () => {
+      if (!head || !headtts) {
+        alert('Avatar or TTS not initialized yet.');
+        return;
+      }
+      statusElement.innerText = 'Status: Synthesizing speech...';
+      headtts.synthesize({ input: myPredefinedScript });
+    });
 
-        document.getElementById('speak-button').addEventListener('click', () => {
-            if (!head || !headtts) {
-                alert('Avatar or TTS not initialized yet.');
-                return;
-            }
-            const text = myPredefinedScript;
-            if (text) {
-                statusElement.innerText = 'Status: Synthesizing speech...';
-                headtts.synthesize({ input: text });
-            }
-        });
-
-        function animate() {
-            requestAnimationFrame(animate);
-        }
-
-        initializeAvatar();
-        animate();
-    </script>
+    initializeAvatar();
+  </script>
 </body>
 </html>
