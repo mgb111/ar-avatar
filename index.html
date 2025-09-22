@@ -54,6 +54,7 @@
             width: 100%;
             height: 100%;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             z-index: 100;
@@ -66,14 +67,16 @@
         #ar-instructions {
             display: none;
         }
-        .loader {
+        .loader, .thinking-loader {
             border: 4px solid #4b5563;
             border-top: 4px solid #60a5fa;
             border-radius: 50%;
             width: 40px;
             height: 40px;
             animation: spin 1s linear infinite;
-            margin-right: 1rem;
+        }
+        .loader {
+             margin-bottom: 1rem;
         }
         @keyframes spin {
             0% { transform: rotate(0deg); }
@@ -97,8 +100,13 @@
     <div id="ar-button-container">
         <button id="ar-button-placeholder">Enter Augmented Reality</button>
     </div>
-
-    <textarea id="script-input" style="display:none;">Hello, I am Manish from QuickScanAR, a tool that converts your static marketing print materials into interactive augmented reality experiences. I look forward to serving your immersive media needs.</textarea>
+    
+    <div id="ar-controls-container" style="position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%); z-index: 10; display: none; gap: 1rem;">
+        <button id="mic-button" class="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white font-bold p-4 rounded-full transition duration-200 shadow-lg flex justify-center items-center">
+             <svg id="mic-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
+             <div id="thinking-icon" class="thinking-loader" style="display:none; width: 24px; height: 24px;"></div>
+        </button>
+    </div>
 
     <!-- ES Module Shims for older browser support -->
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
@@ -121,14 +129,21 @@
         let jawOpenMorphTargetIndex = null;
         let reticle;
         let voices = [];
+        let speechRecognition;
+        let isListening = false;
         let isSpeaking = false;
+        let isAIThinking = false;
         
         const loadingOverlay = document.getElementById('loading-overlay');
         const arButtonContainer = document.getElementById('ar-button-container');
         const arInstructions = document.getElementById('ar-instructions');
-        const scriptInput = document.getElementById('script-input');
+        const arControlsContainer = document.getElementById('ar-controls-container');
+        const micButton = document.getElementById('mic-button');
+        const micIcon = document.getElementById('mic-icon');
+        const thinkingIcon = document.getElementById('thinking-icon');
 
         const defaultAvatarUrl = 'https://raw.githubusercontent.com/mgb111/ar-avatar/main/avatar.glb';
+        const apiKey = ""; // Canvas will provide key
 
         let activeGesture = null;
         let initialScale = new THREE.Vector3();
@@ -164,6 +179,9 @@
 
             loadModel(defaultAvatarUrl);
             
+            setupSpeechRecognition();
+
+            micButton.addEventListener('click', toggleListening);
             window.addEventListener('resize', onWindowResize);
             renderer.domElement.addEventListener('touchstart', onTouchStart, { passive: false });
             renderer.domElement.addEventListener('touchmove', onTouchMove, { passive: false });
@@ -201,6 +219,7 @@
             
             renderer.xr.addEventListener('sessionend', () => {
                  arButtonContainer.style.display = 'flex';
+                 arControlsContainer.style.display = 'none';
                  arInstructions.style.display = 'none';
                  window.speechSynthesis.cancel();
                  controls.enabled = true;
@@ -225,6 +244,88 @@
             controller.addEventListener('select', onSelect);
             scene.add(controller);
         }
+        
+        function setupSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (SpeechRecognition) {
+                speechRecognition = new SpeechRecognition();
+                speechRecognition.continuous = false;
+                speechRecognition.lang = 'en-US';
+                speechRecognition.interimResults = false;
+                speechRecognition.maxAlternatives = 1;
+
+                speechRecognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript;
+                    getAIResponse(transcript);
+                };
+
+                speechRecognition.onstart = () => {
+                    isListening = true;
+                    micButton.classList.add('bg-red-600', 'hover:bg-red-700');
+                    micButton.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                };
+                
+                speechRecognition.onend = () => {
+                    isListening = false;
+                    micButton.classList.remove('bg-red-600', 'hover:bg-red-700');
+                    micButton.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                };
+
+                speechRecognition.onerror = (event) => {
+                    console.error('Speech recognition error:', event.error);
+                };
+            } else {
+                console.warn('Speech Recognition not supported in this browser.');
+                micButton.disabled = true;
+            }
+        }
+        
+        function toggleListening() {
+            if (isListening || isSpeaking || isAIThinking) return;
+            window.speechSynthesis.cancel();
+            speechRecognition.start();
+        }
+        
+        async function getAIResponse(userPrompt) {
+            isAIThinking = true;
+            micIcon.style.display = 'none';
+            thinkingIcon.style.display = 'block';
+            micButton.disabled = true;
+
+            const systemPrompt = `You are a helpful AI assistant for QuickScanAR, a tool that converts static marketing print materials into interactive augmented reality experiences. Your name is Manish. Your goal is to be helpful and informative about QuickScanAR. Your core information is: "Hello, I am Manish from QuickScanAR, a tool that converts your static marketing print materials into interactive augmented reality experiences. I look forward to serving your immersive media needs.". Respond to user questions based on this context. Be concise and conversational.`;
+            
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{ parts: [{ text: userPrompt }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+            };
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) {
+                    throw new Error(`API call failed with status: ${response.status}`);
+                }
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text) {
+                    speak(text);
+                } else {
+                   speak("I'm sorry, I couldn't come up with a response.");
+                }
+            } catch (error) {
+                console.error("Error calling Gemini API:", error);
+                speak("I seem to be having trouble connecting. Please try again later.");
+            } finally {
+                isAIThinking = false;
+                micIcon.style.display = 'block';
+                thinkingIcon.style.display = 'none';
+                micButton.disabled = false;
+            }
+        }
 
         function onSelect() {
             if (reticle.visible && model) {
@@ -232,7 +333,7 @@
                 model.visible = true;
                 groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -model.position.y);
                 arInstructions.style.display = 'none';
-                speak(scriptInput.value);
+                arControlsContainer.style.display = 'flex';
             }
         }
         
