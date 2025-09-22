@@ -108,7 +108,7 @@
                  <div id="thinking-icon" class="thinking-loader" style="display:none; width: 24px; height: 24px;"></div>
             </button>
         </div>
-        <input type="password" id="api-key-input" placeholder="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" class="bg-gray-800 border border-gray-600 text-white text-sm rounded-full px-4 py-2 w-64 text-center placeholder-gray-400" autocomplete="off">
+        <input type="password" id="api-key-input" placeholder="Enter OpenAI API Key" class="bg-gray-800 border border-gray-600 text-white text-sm rounded-full px-4 py-2 w-64 text-center placeholder-gray-400" autocomplete="off">
     </div>
 
     <!-- ES Module Shims for older browser support -->
@@ -131,11 +131,11 @@
         let model, mixer, clock;
         let jawOpenMorphTargetIndex = null;
         let reticle;
-        let voices = [];
         let speechRecognition;
         let isListening = false;
         let isSpeaking = false;
         let isAIThinking = false;
+        let currentAudio = null;
         
         const loadingOverlay = document.getElementById('loading-overlay');
         const arButtonContainer = document.getElementById('ar-button-container');
@@ -191,15 +191,7 @@
             renderer.domElement.addEventListener('touchend', onTouchEnd);
             
             setupAR();
-            populateVoiceList();
-            if (speechSynthesis.onvoiceschanged !== undefined) {
-                speechSynthesis.onvoiceschanged = populateVoiceList;
-            }
             renderer.setAnimationLoop(animate);
-        }
-
-        function populateVoiceList() {
-            voices = window.speechSynthesis.getVoices();
         }
 
         function setupAR() {
@@ -211,7 +203,7 @@
             arButton.textContent = "Enter Augmented Reality";
             
             arButton.addEventListener('click', () => {
-                window.speechSynthesis.cancel();
+                if(currentAudio) currentAudio.pause();
             });
 
             renderer.xr.addEventListener('sessionstart', () => {
@@ -224,7 +216,7 @@
                  arButtonContainer.style.display = 'flex';
                  arControlsContainer.style.display = 'none';
                  arInstructions.style.display = 'none';
-                 window.speechSynthesis.cancel();
+                 if(currentAudio) currentAudio.pause();
                  controls.enabled = true;
                  if(model) {
                    model.position.set(0, 0, 0);
@@ -285,7 +277,7 @@
         
         function toggleListening() {
             if (isListening || isSpeaking || isAIThinking) return;
-            window.speechSynthesis.cancel();
+            if (currentAudio) currentAudio.pause();
             speechRecognition.start();
         }
         
@@ -293,7 +285,7 @@
             const finalApiKey = apiKeyInput.value;
 
             if (!finalApiKey) {
-                speak("I need an API key to connect. Please enter your OpenAI API key to chat.");
+                await generateAndPlaySpeech("I need an API key to connect. Please enter your OpenAI API key to chat.");
                 return;
             }
 
@@ -330,13 +322,13 @@
                 const result = await response.json();
                 const text = result.choices?.[0]?.message?.content;
                 if (text) {
-                    speak(text.trim());
+                    await generateAndPlaySpeech(text.trim());
                 } else {
-                   speak("I'm sorry, I couldn't come up with a response.");
+                   await generateAndPlaySpeech("I'm sorry, I couldn't come up with a response.");
                 }
             } catch (error) {
                 console.error("Error calling OpenAI API:", error);
-                speak("I seem to be having a problem connecting. Please check your OpenAI API key and try again later.");
+                await generateAndPlaySpeech("I seem to be having a problem connecting. Please check your OpenAI API key and try again later.");
             } finally {
                 isAIThinking = false;
                 micIcon.style.display = 'block';
@@ -344,6 +336,44 @@
                 micButton.disabled = false;
             }
         }
+
+        async function generateAndPlaySpeech(text) {
+             const finalApiKey = apiKeyInput.value;
+             if (!text || !model || !finalApiKey) return;
+
+             isSpeaking = true;
+             const ttsUrl = 'https://api.openai.com/v1/audio/speech';
+             const payload = {
+                 model: "tts-1",
+                 input: text,
+                 voice: "alloy" // A consistent, high-quality male voice
+             };
+
+             try {
+                 const response = await fetch(ttsUrl, {
+                     method: 'POST',
+                     headers: {
+                         'Content-Type': 'application/json',
+                         'Authorization': `Bearer ${finalApiKey}`
+                     },
+                     body: JSON.stringify(payload)
+                 });
+                 if (!response.ok) throw new Error("Failed to generate speech.");
+
+                 const audioBlob = await response.blob();
+                 const audioUrl = URL.createObjectURL(audioBlob);
+                 currentAudio = new Audio(audioUrl);
+                 currentAudio.play();
+                 currentAudio.onended = () => {
+                     isSpeaking = false;
+                 };
+
+             } catch(error) {
+                console.error("Error generating speech:", error);
+                isSpeaking = false;
+             }
+        }
+
 
         function onSelect() {
             if (reticle.visible && model) {
@@ -430,40 +460,6 @@
             }, undefined, (error) => console.error(error));
         }
         
-        function speak(text) {
-            if (!text || !model) return;
-            if (jawOpenMorphTargetIndex === null) console.warn("Lip-sync disabled.");
-            
-            window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance(text);
-
-            if (voices.length === 0) {
-                voices = window.speechSynthesis.getVoices();
-            }
-
-            const maleVoiceKeywords = ['Male', 'David', 'Daniel', 'Fred', 'Tom', 'Google US English'];
-            let selectedVoice = null;
-
-            for (const keyword of maleVoiceKeywords) {
-                selectedVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes(keyword));
-                if (selectedVoice) break;
-            }
-
-            if (selectedVoice) {
-                utterance.voice = selectedVoice;
-            } else {
-                const fallbackVoice = voices.find(v => v.lang === 'en-US');
-                if(fallbackVoice) {
-                    utterance.voice = fallbackVoice;
-                }
-                console.warn("A specific male voice was not found. Using a default English voice.");
-            }
-            
-            utterance.onstart = () => { isSpeaking = true; };
-            utterance.onend = () => { isSpeaking = false; };
-            window.speechSynthesis.speak(utterance);
-        }
-
         function handleLipSync() {
             if (isSpeaking && jawOpenMorphTargetIndex !== null) {
                 const influence = (Math.sin(Date.now() * 0.025) + 1) / 2;
