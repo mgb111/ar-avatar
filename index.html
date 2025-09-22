@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Talking Avatar - GitHub Pages</title>
+    <title>Talking Avatar (ESM Import)</title>
     <style>
         body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: sans-serif;
             margin: 0;
             overflow: hidden;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
         #container {
             width: 100vw;
@@ -19,347 +18,101 @@
             position: absolute;
             top: 20px;
             left: 20px;
-            padding: 20px;
-            background: rgba(0,0,0,0.9);
-            border-radius: 12px;
+            padding: 10px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 8px;
             color: white;
-            max-width: 350px;
-            backdrop-filter: blur(10px);
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
         }
         button {
-            padding: 12px 18px;
+            padding: 10px 15px;
             cursor: pointer;
-            margin: 5px;
-            border: none;
-            border-radius: 8px;
-            background: linear-gradient(45deg, #667eea, #764ba2);
-            color: white;
-            font-weight: bold;
-            transition: all 0.3s ease;
-        }
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        }
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-        #debug-info {
-            margin-top: 15px;
-            font-size: 11px;
-            font-family: 'Courier New', monospace;
-            max-height: 200px;
-            overflow-y: auto;
-            background: rgba(0,0,0,0.5);
-            padding: 10px;
-            border-radius: 6px;
-            border-left: 3px solid #667eea;
-        }
-        #status {
-            font-weight: bold;
-            padding: 10px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.2);
-            margin-bottom: 10px;
-        }
-        .loading {
-            display: inline-block;
-            animation: pulse 1.5s ease-in-out infinite alternate;
-        }
-        @keyframes pulse {
-            from { opacity: 1; }
-            to { opacity: 0.5; }
         }
     </style>
-
-    <script type="importmap">
-    {
-      "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/",
-        "talkinghead": "https://cdn.jsdelivr.net/gh/met4citizen/TalkingHead@1.6/modules/talkinghead.mjs",
-        "headtts": "https://cdn.jsdelivr.net/gh/met4citizen/HeadTTS@0.2/modules/headtts.mjs"
-      }
-    }
-    </script>
 </head>
 <body>
     <div id="container"></div>
 
     <div id="controls">
-        <div id="status">Status: <span class="loading">Initializing...</span></div>
-        
-        <button id="speak-button" disabled>🎤 Play Introduction</button>
-        <button id="add-cube">🎲 Add Test Cube</button>
-        <button id="reset-camera">📷 Reset Camera</button>
-        <button id="toggle-debug">🔧 Toggle Debug</button>
-        
-        <div id="debug-info" style="display: none;"></div>
+        <button id="speak-button">Play Introduction</button>
+        <p id="status">Status: Ready</p>
     </div>
 
     <script type="module">
-        import * as THREE from 'three';
-        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        // Import libraries directly from the CDN
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
+        import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/controls/OrbitControls.js';
+        import { TalkingHead } from 'https://cdn.jsdelivr.net/npm/@met4citizen/talkinghead@1.6.0/+esm';
+        import { HeadTTS } from 'https://cdn.jsdelivr.net/npm/@met4citizen/headtts@0.2.1/+esm';
 
-        let TalkingHead, HeadTTS;
-        
-        // Try to load the libraries with fallback
-        try {
-            const { TalkingHead: TH } = await import('talkinghead');
-            const { HeadTTS: HTTS } = await import('headtts');
-            TalkingHead = TH;
-            HeadTTS = HTTS;
-        } catch (error) {
-            console.warn('Could not load TalkingHead/HeadTTS libraries:', error);
-        }
-
-        // Debug logging
-        function debugLog(message, type = 'info') {
-            const timestamp = new Date().toLocaleTimeString();
-            const logMessage = `[${timestamp}] ${message}`;
-            console.log(logMessage);
-            
-            const debugInfo = document.getElementById('debug-info');
-            const color = type === 'error' ? '#ff6b6b' : type === 'success' ? '#51cf66' : '#74c0fc';
-            debugInfo.innerHTML += `<span style="color: ${color};">${logMessage}</span><br>`;
-            debugInfo.scrollTop = debugInfo.scrollHeight;
-        }
-
-        // Scene setup
+        // 1. Scene Setup
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x2c3e50);
-        
+        scene.background = new THREE.Color(0xeeeeee);
         const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 1.6, 3);
+        camera.position.set(0, 1.6, 2.5);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        renderer.outputColorSpace = THREE.SRGBColorSpace;
         document.getElementById('container').appendChild(renderer.domElement);
 
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.target.set(0, 1.4, 0);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
         controls.update();
 
-        // Lighting setup
-        const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
         scene.add(ambientLight);
-        
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-        directionalLight.position.set(5, 5, 5);
-        directionalLight.castShadow = true;
-        directionalLight.shadow.mapSize.width = 2048;
-        directionalLight.shadow.mapSize.height = 2048;
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
+        directionalLight.position.set(1, 1, 1);
         scene.add(directionalLight);
-
-        const keyLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        keyLight.position.set(0, 2, 5);
-        scene.add(keyLight);
-
-        // Scene helpers
-        const axesHelper = new THREE.AxesHelper(2);
-        scene.add(axesHelper);
-
-        // Ground plane
-        const groundGeometry = new THREE.PlaneGeometry(10, 10);
-        const groundMaterial = new THREE.MeshLambertMaterial({ 
-            color: 0x34495e,
-            transparent: true,
-            opacity: 0.8
-        });
-        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-        ground.rotation.x = -Math.PI / 2;
-        ground.receiveShadow = true;
-        scene.add(ground);
-
-        // State
+        
         const statusElement = document.getElementById('status');
-        let head = null;
-        let headtts = null;
-        let isInitialized = false;
+        let head;
+        let headtts;
+        const myPredefinedScript = "Welcome. This talking avatar is now loaded using the direct ES Module import method.";
 
-        const predefinedScript = "Welcome to my GitHub Pages website! I am a digital avatar, and I'm excited to meet you. Feel free to explore!";
-
-        // Utility functions
-        function updateStatus(message, isLoading = false) {
-            const loadingClass = isLoading ? 'loading' : '';
-            statusElement.innerHTML = `Status: <span class="${loadingClass}">${message}</span>`;
-        }
-
-        function addTestCube() {
-            const geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-            const material = new THREE.MeshStandardMaterial({ 
-                color: Math.random() * 0xffffff,
-                metalness: 0.3,
-                roughness: 0.4
-            });
-            const cube = new THREE.Mesh(geometry, material);
-            cube.position.set(
-                (Math.random() - 0.5) * 4,
-                Math.random() * 2 + 0.25,
-                (Math.random() - 0.5) * 4
-            );
-            cube.castShadow = true;
-            cube.receiveShadow = true;
-            scene.add(cube);
-            debugLog(`Test cube added at position: ${JSON.stringify(cube.position)}`, 'success');
-        }
-
-        function resetCamera() {
-            camera.position.set(0, 1.6, 3);
-            controls.target.set(0, 1.4, 0);
-            controls.update();
-            debugLog('Camera reset to default position', 'success');
-        }
-
-        // Avatar initialization
+        // 2. Initialization Function
         async function initializeAvatar() {
-            try {
-                updateStatus('Checking libraries...', true);
-                
-                if (!TalkingHead) {
-                    throw new Error('TalkingHead library not available');
+            statusElement.innerText = 'Status: Loading Avatar...';
+            head = new TalkingHead(scene, {
+                camera: camera,
+                ttsEndpoint: "none"
+            });
+            await head.loadModel('avatar.glb');
+            head.setVisible(true);
+            statusElement.innerText = 'Status: Avatar Loaded.';
+            
+            statusElement.innerText = 'Status: Loading TTS Engine...';
+            headtts = new HeadTTS();
+            statusElement.innerText = 'Status: Ready.';
+
+            headtts.onmessage = (message) => {
+                if (message.type === "audio") {
+                    head.speakAudio(message.data);
+                } else if (message.type === "error") {
+                    console.error("HeadTTS Error:", message.data.error);
+                    statusElement.innerText = 'Status: TTS Error.';
                 }
-
-                debugLog('Libraries loaded successfully', 'success');
-                updateStatus('Creating avatar...', true);
-                
-                head = new TalkingHead(scene, {
-                    camera: camera,
-                    ttsEndpoint: "none"
-                });
-
-                debugLog('TalkingHead instance created', 'success');
-                updateStatus('Loading 3D model...', true);
-
-                // Multiple possible model paths for flexibility
-                const modelPaths = ['avatar.glb', './avatar.glb', 'models/avatar.glb'];
-                let modelLoaded = false;
-
-                for (const path of modelPaths) {
-                    try {
-                        debugLog(`Attempting to load model from: ${path}`);
-                        await head.loadModel(path);
-                        modelLoaded = true;
-                        debugLog(`Model loaded successfully from: ${path}`, 'success');
-                        break;
-                    } catch (error) {
-                        debugLog(`Failed to load from ${path}: ${error.message}`, 'error');
-                    }
-                }
-
-                if (!modelLoaded) {
-                    throw new Error('Could not load avatar model from any path. Make sure avatar.glb exists in your repository.');
-                }
-
-                if (head.model) {
-                    head.model.castShadow = true;
-                    head.model.receiveShadow = true;
-                    debugLog(`Model details - Position: ${JSON.stringify(head.model.position)}, Scale: ${JSON.stringify(head.model.scale)}`, 'info');
-                }
-
-                head.setVisible(true);
-                updateStatus('Loading speech engine...', true);
-
-                // Initialize TTS if available
-                if (HeadTTS) {
-                    headtts = new HeadTTS();
-                    
-                    headtts.onmessage = (message) => {
-                        if (message.type === "audio") {
-                            head.speakAudio(message.data);
-                            debugLog('Playing synthesized speech', 'success');
-                        } else if (message.type === "error") {
-                            debugLog(`TTS Error: ${message.data.error}`, 'error');
-                        }
-                    };
-                    
-                    debugLog('TTS engine initialized', 'success');
-                } else {
-                    debugLog('TTS not available - speech synthesis disabled', 'error');
-                }
-
-                updateStatus('Ready!');
-                document.getElementById('speak-button').disabled = false;
-                isInitialized = true;
-                
-                debugLog(`Scene now has ${scene.children.length} children`, 'info');
-                debugLog('Avatar initialization complete!', 'success');
-
-            } catch (error) {
-                debugLog(`Initialization error: ${error.message}`, 'error');
-                updateStatus(`Error: ${error.message}`);
-                
-                // Provide helpful hints based on error type
-                if (error.message.includes('avatar.glb')) {
-                    debugLog('HINT: Make sure avatar.glb file is uploaded to your GitHub repository', 'error');
-                } else if (error.message.includes('CORS')) {
-                    debugLog('HINT: GitHub Pages should handle CORS automatically', 'error');
-                } else if (error.message.includes('TalkingHead')) {
-                    debugLog('HINT: Library loading issue - check your internet connection', 'error');
-                }
-            }
+            };
         }
 
-        // Event listeners
+        // 3. Event Listener
         document.getElementById('speak-button').addEventListener('click', () => {
-            if (!isInitialized) {
-                debugLog('Avatar not ready yet', 'error');
+            if (!head || !headtts) {
+                alert('Avatar or TTS not initialized yet.');
                 return;
             }
-            
-            if (headtts) {
-                updateStatus('Synthesizing speech...', true);
-                debugLog('Starting speech synthesis', 'info');
-                headtts.synthesize({ input: predefinedScript });
-                
-                setTimeout(() => {
-                    if (statusElement.textContent.includes('Synthesizing')) {
-                        updateStatus('Ready!');
-                    }
-                }, 3000);
-            } else {
-                debugLog('TTS not available - cannot synthesize speech', 'error');
-                alert('Speech synthesis not available. The avatar model should still be visible!');
+            const text = myPredefinedScript;
+            if (text) {
+                statusElement.innerText = 'Status: Synthesizing speech...';
+                headtts.synthesize({ input: text });
             }
         });
 
-        document.getElementById('add-cube').addEventListener('click', addTestCube);
-        document.getElementById('reset-camera').addEventListener('click', resetCamera);
-        document.getElementById('toggle-debug').addEventListener('click', () => {
-            const debugInfo = document.getElementById('debug-info');
-            debugInfo.style.display = debugInfo.style.display === 'none' ? 'block' : 'none';
-        });
-
-        // Window resize handler
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        // Animation loop
+        // 4. Animation Loop
         function animate() {
             requestAnimationFrame(animate);
-            
-            if (head && isInitialized) {
-                head.update(performance.now());
-            }
-            
-            controls.update();
+            if (head) head.update(performance.now());
             renderer.render(scene, camera);
         }
-
-        // Initialize everything
-        debugLog('Starting application...', 'info');
-        debugLog(`User agent: ${navigator.userAgent}`, 'info');
-        debugLog(`Current URL: ${window.location.href}`, 'info');
 
         initializeAvatar();
         animate();
