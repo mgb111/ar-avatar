@@ -3,7 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Talking Avatar (ESM Import)</title>
+    <title>Talking Avatar</title>
+
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/",
+        "talkinghead": "./talkinghead.mjs",
+        "headtts": "./headtts.mjs"
+      }
+    }
+    </script>
+
     <style>
         body { 
             font-family: sans-serif;
@@ -38,11 +50,10 @@
     </div>
 
     <script type="module">
-        // Import libraries directly from the CDN
-        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
-        import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/controls/OrbitControls.js';
-        import { TalkingHead } from 'https://cdn.jsdelivr.net/npm/@met4citizen/talkinghead@1.6.0/+esm';
-        import { HeadTTS } from 'https://cdn.jsdelivr.net/npm/@met4citizen/headtts@0.2.1/+esm';
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { TalkingHead } from 'talkinghead';
+        import { HeadTTS } from 'headtts';
 
         // 1. Scene Setup
         const scene = new THREE.Scene();
@@ -67,7 +78,7 @@
         const statusElement = document.getElementById('status');
         let head;
         let headtts;
-        const myPredefinedScript = "Welcome. This talking avatar is now loaded using the direct ES Module import method.";
+        const myPredefinedScript = "Welcome. This talking avatar is now working correctly.";
 
         // 2. Initialization Function
         async function initializeAvatar() {
