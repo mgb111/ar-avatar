@@ -52,7 +52,7 @@
 
     <script type="module">
         import * as THREE from 'three';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'; // Import GLTFLoader
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { TalkingHead } from 'talkinghead';
         import { HeadTTS } from 'headtts';
 
@@ -70,7 +70,7 @@
         const statusElement = document.getElementById('status');
         let head;
         let headtts;
-        const myPredefinedScript = "The model loading process has now been corrected.";
+        const myPredefinedScript = "The final error has been fixed. I should now be working perfectly.";
 
         async function initializeAvatar() {
             statusElement.innerText = 'Status: Loading...';
@@ -85,20 +85,18 @@
 
             mainScene.add(head.scene);
 
-            // --- FIX APPLIED HERE: Load model with GLTFLoader ---
             statusElement.innerText = 'Status: Loading 3D Model...';
             const loader = new GLTFLoader();
             loader.load('avatar.glb', (gltf) => {
-                // Model loaded successfully
-                head.setModel(gltf.scene); // Pass the loaded scene to the library
+                // --- FIX APPLIED HERE ---
+                head.addAvatar(gltf.scene); // Use the correct function: addAvatar()
+                
                 head.setVisible(true);
                 statusElement.innerText = 'Status: Avatar Loaded.';
             }, undefined, (error) => {
-                // Error handling for model loading
                 console.error('An error happened while loading the model:', error);
                 statusElement.innerText = 'Error: Could not load 3D model.';
             });
-            // --- END OF FIX ---
             
             statusElement.innerText = 'Status: Loading TTS Engine...';
             headtts = new HeadTTS();
