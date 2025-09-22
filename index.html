@@ -418,8 +418,33 @@
             
             window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(text);
-            const maleVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Male'));
-            utterance.voice = maleVoice;
+
+            // If voices are not loaded yet, try to get them directly. This handles a common race condition.
+            if (voices.length === 0) {
+                voices = window.speechSynthesis.getVoices();
+            }
+
+            // More robust search for a male voice across different browsers/OS
+            const maleVoiceKeywords = ['Male', 'David', 'Daniel', 'Fred', 'Tom', 'Google US English'];
+            let selectedVoice = null;
+
+            // Find a voice that contains any of the keywords
+            for (const keyword of maleVoiceKeywords) {
+                selectedVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes(keyword));
+                if (selectedVoice) break;
+            }
+
+            if (selectedVoice) {
+                utterance.voice = selectedVoice;
+            } else {
+                // If still no male voice, try to find any en-US voice as a fallback.
+                const fallbackVoice = voices.find(v => v.lang === 'en-US');
+                if(fallbackVoice) {
+                    utterance.voice = fallbackVoice;
+                }
+                console.warn("A specific male voice was not found. Using a default English voice.");
+            }
+            
             utterance.onstart = () => { isSpeaking = true; };
             utterance.onend = () => { isSpeaking = false; };
             window.speechSynthesis.speak(utterance);
