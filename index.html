@@ -101,11 +101,14 @@
         <button id="ar-button-placeholder">Enter Augmented Reality</button>
     </div>
     
-    <div id="ar-controls-container" style="position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%); z-index: 10; display: none; gap: 1rem;">
-        <button id="mic-button" class="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white font-bold p-4 rounded-full transition duration-200 shadow-lg flex justify-center items-center">
-             <svg id="mic-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
-             <div id="thinking-icon" class="thinking-loader" style="display:none; width: 24px; height: 24px;"></div>
-        </button>
+    <div id="ar-controls-container" style="position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%); z-index: 10; display: none; flex-direction: column; align-items: center; gap: 1rem;">
+        <div>
+            <button id="mic-button" class="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white font-bold p-4 rounded-full transition duration-200 shadow-lg flex justify-center items-center">
+                 <svg id="mic-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
+                 <div id="thinking-icon" class="thinking-loader" style="display:none; width: 24px; height: 24px;"></div>
+            </button>
+        </div>
+        <input type="password" id="api-key-input" placeholder="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" class="bg-gray-800 border border-gray-600 text-white text-sm rounded-full px-4 py-2 w-64 text-center placeholder-gray-400" autocomplete="off">
     </div>
 
     <!-- ES Module Shims for older browser support -->
@@ -141,10 +144,10 @@
         const micButton = document.getElementById('mic-button');
         const micIcon = document.getElementById('mic-icon');
         const thinkingIcon = document.getElementById('thinking-icon');
+        const apiKeyInput = document.getElementById('api-key-input');
 
         const defaultAvatarUrl = 'https://raw.githubusercontent.com/mgb111/ar-avatar/main/avatar.glb';
-        const apiKey = ""; // Canvas will provide key
-
+        
         let activeGesture = null;
         let initialScale = new THREE.Vector3();
         let initialPinchDistance = 0;
@@ -287,6 +290,13 @@
         }
         
         async function getAIResponse(userPrompt) {
+            const finalApiKey = apiKeyInput.value;
+
+            if (!finalApiKey) {
+                speak("I need an API key to connect. Please enter your OpenAI API key to chat.");
+                return;
+            }
+
             isAIThinking = true;
             micIcon.style.display = 'none';
             thinkingIcon.style.display = 'block';
@@ -294,31 +304,39 @@
 
             const systemPrompt = `You are a helpful AI assistant for QuickScanAR, a tool that converts static marketing print materials into interactive augmented reality experiences. Your name is Manish. Your goal is to be helpful and informative about QuickScanAR. Your core information is: "Hello, I am Manish from QuickScanAR, a tool that converts your static marketing print materials into interactive augmented reality experiences. I look forward to serving your immersive media needs.". Respond to user questions based on this context. Be concise and conversational.`;
             
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            const apiUrl = 'https://api.openai.com/v1/chat/completions';
             const payload = {
-                contents: [{ parts: [{ text: userPrompt }] }],
-                systemInstruction: { parts: [{ text: systemPrompt }] },
+                model: "gpt-3.5-turbo",
+                messages: [
+                    { "role": "system", "content": systemPrompt },
+                    { "role": "user", "content": userPrompt }
+                ]
             };
 
             try {
                 const response = await fetch(apiUrl, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${finalApiKey}`
+                    },
                     body: JSON.stringify(payload)
                 });
                 if (!response.ok) {
-                    throw new Error(`API call failed with status: ${response.status}`);
+                    const errorBody = await response.json();
+                    console.error("API Error Body:", errorBody);
+                    throw new Error(`API call failed with status: ${response.status}. Please check your API key.`);
                 }
                 const result = await response.json();
-                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                const text = result.choices?.[0]?.message?.content;
                 if (text) {
-                    speak(text);
+                    speak(text.trim());
                 } else {
                    speak("I'm sorry, I couldn't come up with a response.");
                 }
             } catch (error) {
-                console.error("Error calling Gemini API:", error);
-                speak("I seem to be having trouble connecting. Please try again later.");
+                console.error("Error calling OpenAI API:", error);
+                speak("I seem to be having a problem connecting. Please check your OpenAI API key and try again later.");
             } finally {
                 isAIThinking = false;
                 micIcon.style.display = 'block';
@@ -419,16 +437,13 @@
             window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(text);
 
-            // If voices are not loaded yet, try to get them directly. This handles a common race condition.
             if (voices.length === 0) {
                 voices = window.speechSynthesis.getVoices();
             }
 
-            // More robust search for a male voice across different browsers/OS
             const maleVoiceKeywords = ['Male', 'David', 'Daniel', 'Fred', 'Tom', 'Google US English'];
             let selectedVoice = null;
 
-            // Find a voice that contains any of the keywords
             for (const keyword of maleVoiceKeywords) {
                 selectedVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes(keyword));
                 if (selectedVoice) break;
@@ -437,7 +452,6 @@
             if (selectedVoice) {
                 utterance.voice = selectedVoice;
             } else {
-                // If still no male voice, try to find any en-US voice as a fallback.
                 const fallbackVoice = voices.find(v => v.lang === 'en-US');
                 if(fallbackVoice) {
                     utterance.voice = fallbackVoice;
