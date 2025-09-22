@@ -67,6 +67,20 @@
         #ar-instructions {
             display: none;
         }
+        #status-message {
+            position: absolute;
+            top: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(239, 68, 68, 0.8);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            z-index: 110;
+            font-size: 0.875rem;
+            display: none;
+            text-align: center;
+        }
         .loader, .thinking-loader {
             border: 4px solid #4b5563;
             border-top: 4px solid #60a5fa;
@@ -96,6 +110,8 @@
     <div id="ar-instructions">
         <span>Move your phone to find a flat surface, then tap to place the avatar.</span>
     </div>
+    
+    <div id="status-message"></div>
 
     <div id="ar-button-container">
         <button id="ar-button-placeholder">Enter Augmented Reality</button>
@@ -104,7 +120,7 @@
     <div id="ar-controls-container" style="position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%); z-index: 10; display: none; flex-direction: column; align-items: center; gap: 1rem;">
         <div>
             <button id="mic-button" class="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white font-bold p-4 rounded-full transition duration-200 shadow-lg flex justify-center items-center">
-                 <svg id="mic-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
+                 <svg id="mic-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
                  <div id="thinking-icon" class="thinking-loader" style="display:none; width: 24px; height: 24px;"></div>
             </button>
         </div>
@@ -141,10 +157,12 @@
         let isSpeaking = false;
         let isAIThinking = false;
         let currentAudio = null;
+        let audioContext;
         
         const loadingOverlay = document.getElementById('loading-overlay');
         const arButtonContainer = document.getElementById('ar-button-container');
         const arInstructions = document.getElementById('ar-instructions');
+        const statusMessage = document.getElementById('status-message');
         const arControlsContainer = document.getElementById('ar-controls-container');
         const micButton = document.getElementById('mic-button');
         const micIcon = document.getElementById('mic-icon');
@@ -166,6 +184,12 @@
             clock = new THREE.Clock();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0, 1.6, 2.5);
+            
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            } catch (e) {
+                console.warn("Web Audio API is not supported in this browser.");
+            }
 
             const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
             scene.add(ambientLight);
@@ -198,6 +222,15 @@
             renderer.setAnimationLoop(animate);
         }
 
+        function showStatusMessage(message, isError = true) {
+            statusMessage.textContent = message;
+            statusMessage.style.backgroundColor = isError ? 'rgba(239, 68, 68, 0.8)' : 'rgba(34, 197, 94, 0.8)';
+            statusMessage.style.display = 'block';
+            setTimeout(() => {
+                statusMessage.style.display = 'none';
+            }, 5000);
+        }
+
         function setupAR() {
             const arButton = ARButton.createButton(renderer, { 
                 requiredFeatures: ['hit-test', 'dom-overlay'],
@@ -208,6 +241,9 @@
             
             arButton.addEventListener('click', () => {
                 if(currentAudio) currentAudio.pause();
+                if(audioContext && audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
             });
 
             renderer.xr.addEventListener('sessionstart', () => {
@@ -272,17 +308,23 @@
 
                 speechRecognition.onerror = (event) => {
                     console.error('Speech recognition error:', event.error);
+                    showStatusMessage('Microphone error. Please check browser permissions.');
                 };
             } else {
                 console.warn('Speech Recognition not supported in this browser.');
                 micButton.disabled = true;
+                showStatusMessage('Voice input is not supported on this browser.', false);
             }
         }
         
         function toggleListening() {
             if (isListening || isSpeaking || isAIThinking) return;
             if (currentAudio) currentAudio.pause();
-            speechRecognition.start();
+            if (speechRecognition) {
+                speechRecognition.start();
+            } else {
+                showStatusMessage('Voice input is not available.');
+            }
         }
         
         async function getAIResponse(userPrompt) {
@@ -314,7 +356,11 @@
                 if (!response.ok) {
                     const errorBody = await response.json();
                     console.error("API Error Body:", errorBody);
-                    throw new Error(`API call failed with status: ${response.status}. Please check your API key.`);
+                    let message = `API Error: ${response.status}. `;
+                    if (response.status === 401) message += "Please check if your API key is correct and active.";
+                    else if (response.status === 429) message += "You've exceeded your usage quota.";
+                    else message += "Please try again later.";
+                    throw new Error(message);
                 }
                 const result = await response.json();
                 const text = result.choices?.[0]?.message?.content;
@@ -325,7 +371,7 @@
                 }
             } catch (error) {
                 console.error("Error calling OpenAI API:", error);
-                await generateAndPlaySpeech("I seem to be having a problem connecting. Please check your OpenAI API key and try again later.");
+                showStatusMessage(error.message);
             } finally {
                 isAIThinking = false;
                 micIcon.style.display = 'block';
@@ -354,7 +400,7 @@
                      },
                      body: JSON.stringify(payload)
                  });
-                 if (!response.ok) throw new Error("Failed to generate speech.");
+                 if (!response.ok) throw new Error("Failed to generate audio from text.");
 
                  const audioBlob = await response.blob();
                  const audioUrl = URL.createObjectURL(audioBlob);
@@ -366,6 +412,7 @@
 
              } catch(error) {
                 console.error("Error generating speech:", error);
+                showStatusMessage(error.message);
                 isSpeaking = false;
              }
         }
