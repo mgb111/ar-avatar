@@ -90,6 +90,8 @@ const BACKEND_URL = 'https://ar-avatar.vercel.app';
 let camera, scene, renderer, controls, model, mixer, clock, jawOpenMorphTargetIndex = null, jawMesh = null, jawBone = null, jawBoneBaseX = 0;
 let reticle, speechRecognition, isListening=false, isSpeaking=false, isAIThinking=false, currentAudio=null, audioContext, analyser, dataArray;
 let hitTestSource=null, hitTestSourceRequested=false, groundPlane=null;
+let isPlaced=false, allowReposition=false, longPressTimer=null, longPressStart={x:0,y:0};
+const LONG_PRESS_MS=600, MOVE_TOLERANCE=10; // px
 let audioSource, activeGesture=null, initialScale=new THREE.Vector3(), initialPinchDistance=0;
 
 const loadingOverlay=document.getElementById('loading-overlay');
@@ -471,7 +473,14 @@ function loadModel(url){
 // --- AR Placement --- //
 function onSelect(){
     if(!reticle.visible) return;
-    if(model){ model.position.setFromMatrixPosition(reticle.matrix); model.visible=true; arInstructions.style.display='none'; reticle.visible=false; }
+    // Only allow first-time placement via tap. Later moves require long-press.
+    if(!isPlaced && model){
+        model.position.setFromMatrixPosition(reticle.matrix);
+        model.visible=true;
+        arInstructions.style.display='none';
+        reticle.visible=false;
+        isPlaced=true;
+    }
 }
 
 // --- Reset Avatar --- //
@@ -480,9 +489,46 @@ function resetAvatar(){ if(model){ model.position.set(0,0,0); model.scale.set(1,
 // --- Touch Gestures for Scale --- //
 let ongoingTouches=[];
 function getDistance(touches){ const dx=touches[0].clientX-touches[1].clientX; const dy=touches[0].clientY-touches[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
-function onTouchStart(e){ if(e.touches.length===2 && model){ initialScale.copy(model.scale); initialPinchDistance=getDistance(e.touches); } }
-function onTouchMove(e){ if(e.touches.length===2 && model){ const newDist=getDistance(e.touches); const scaleFactor=newDist/initialPinchDistance; model.scale.copy(initialScale.clone().multiplyScalar(scaleFactor)); } }
-function onTouchEnd(e){ if(e.touches.length<2) initialPinchDistance=0; }
+function onTouchStart(e){
+    // Two-finger pinch to scale
+    if(e.touches.length===2 && model){
+        initialScale.copy(model.scale); initialPinchDistance=getDistance(e.touches);
+        if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
+        allowReposition=false;
+        return;
+    }
+    // One-finger long-press to enable reposition (only if already placed)
+    if(e.touches.length===1 && renderer.xr.isPresenting && isPlaced){
+        const t=e.touches[0];
+        longPressStart={x:t.clientX,y:t.clientY};
+        if(longPressTimer){ clearTimeout(longPressTimer); }
+        longPressTimer=setTimeout(()=>{
+            allowReposition=true; reticle.visible=true; arInstructions.style.display='flex';
+        }, LONG_PRESS_MS);
+    }
+}
+function onTouchMove(e){
+    // Cancel long-press if finger moves too much
+    if(e.touches.length===1 && longPressTimer){
+        const t=e.touches[0];
+        if(Math.abs(t.clientX-longPressStart.x)>MOVE_TOLERANCE || Math.abs(t.clientY-longPressStart.y)>MOVE_TOLERANCE){
+            clearTimeout(longPressTimer); longPressTimer=null;
+        }
+    }
+    if(e.touches.length===2 && model){
+        const newDist=getDistance(e.touches); const scaleFactor=newDist/initialPinchDistance; model.scale.copy(initialScale.clone().multiplyScalar(scaleFactor));
+    }
+}
+function onTouchEnd(e){
+    if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
+    if(e.touches.length<2) initialPinchDistance=0;
+    // If long-press enabled reposition and reticle is visible, move model to reticle on release
+    if(allowReposition && reticle.visible && model){
+        model.position.setFromMatrixPosition(reticle.matrix);
+        reticle.visible=false; arInstructions.style.display='none';
+        allowReposition=false;
+    }
+}
 
 // --- Window Resize --- //
 function onWindowResize(){ camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight); }
