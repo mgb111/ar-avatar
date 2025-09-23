@@ -48,6 +48,7 @@
     <div id="ar-status">AR Support: Checking...</div>
     <div id="lip-status">Lip Sync: Detecting...</div>
     <button id="test-button">Test AI Response</button>
+    <button id="lip-test-button">Test Lips</button>
     <button id="reset-button">Reset Avatar</button>
 </div>
 
@@ -104,6 +105,7 @@ const micButton=document.getElementById('mic-button');
 const micIcon=document.getElementById('mic-icon');
 const thinkingIcon=document.getElementById('thinking-icon');
 const testButton=document.getElementById('test-button');
+const lipTestButton=document.getElementById('lip-test-button');
 const resetButton=document.getElementById('reset-button');
 const micLevelFill=document.getElementById('mic-level-fill');
 const textInput=document.getElementById('text-input');
@@ -170,6 +172,13 @@ function init(){
 
     micButton.addEventListener('click',toggleListening);
     testButton.addEventListener('click',()=>queueAI("Hello, can you introduce yourself?"));
+    lipTestButton.addEventListener('click',()=>{
+        // Force mouth open briefly for diagnostics
+        let t=0;
+        const interval=setInterval(()=>{
+            t+=0.1; setJaw(Math.min(t,1)); if(t>=1){ clearInterval(interval); setTimeout(()=>setJaw(0),500); }
+        },50);
+    });
     resetButton.addEventListener('click',resetAvatar);
     if(sendButton){
         const sendText=()=>{ const v=textInput?.value?.trim(); if(!v||isSpeaking||isAIThinking) return; queueAI(v); textInput.value=''; };
@@ -288,7 +297,6 @@ function setupSpeechRecognition(){
                 if(typeof origEnd==='function') origEnd();
             };
         })();
-
         speechStatus.textContent='Speech Recognition: ✅ Supported'; speechStatus.style.color='#10b981';
     } else { speechStatus.textContent='Speech Recognition: ❌ Not Supported'; speechStatus.style.color='#ef4444'; micButton.disabled=true; showStatusMessage('Voice input not supported',false); }
 }
@@ -429,6 +437,12 @@ function setJaw(value){
         // Typical jaw open is rotation downwards (negative X in many rigs). Adjust factor as needed.
         const maxOpen = -0.35; // ~20 degrees
         jawBone.rotation.x = jawBoneBaseX + v * maxOpen;
+        if(Math.abs(jawBone.rotation.x-jawBoneBaseX)<0.01){
+            jawBone.rotation.y = jawBoneBaseX + v * maxOpen;
+            if(Math.abs(jawBone.rotation.y-jawBoneBaseX)<0.01){
+                jawBone.rotation.z = jawBoneBaseX + v * maxOpen;
+            }
+        }
     }
 }
 
@@ -444,6 +458,7 @@ function loadModel(url){
             if(jawOpenMorphTargetIndex!==null) return; // already found
             if(child.isMesh && child.morphTargetDictionary){
                 const dict = child.morphTargetDictionary;
+                try{ console.debug('Morph targets on', child.name, Object.keys(dict)); }catch{}
                 // Try exact candidates first
                 for(const name of candidates){
                     if(dict[name]!==undefined){ jawOpenMorphTargetIndex = dict[name]; jawMesh = child; return; }
@@ -466,10 +481,12 @@ function loadModel(url){
                     if(n.includes('jaw') || n.includes('chin') || (n.includes('mouth') && !n.includes('upper'))){
                         jawBone = child;
                         jawBoneBaseX = child.rotation.x;
+                        try{ console.debug('Found jaw-like bone:', child.name); }catch{}
                     }
                 }
             });
         }
+
         // Update UI with detection result
         if(jawMesh && jawOpenMorphTargetIndex!==null){
             lipStatus.textContent = `Lip Sync: Morph '${Object.keys(jawMesh.morphTargetDictionary).find(k=>jawMesh.morphTargetDictionary[k]===jawOpenMorphTargetIndex)}' on '${jawMesh.name}'`;
