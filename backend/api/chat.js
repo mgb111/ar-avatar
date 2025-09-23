@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     const { systemPrompt, userPrompt, model } = req.body || {};
     if (!userPrompt) return res.status(400).json({ error: 'Missing userPrompt' });
 
-    const chatModel = model || 'gpt-4o-mini';
+    const chatModel = model || 'gpt-3.5-turbo';
 
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',

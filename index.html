@@ -122,10 +122,12 @@ const LIP_BONE_NAME = '';
 
 // --- Lip-Sync Tuning (feel free to tweak quickly) ---
 // EXTREME settings to force visible lip movement
-const MOUTH_BASE_GAIN = 40.0; // massive gain
-const MOUTH_SMOOTH = 0.01; // instant response
-const MOUTH_SPIKE_CHANCE = 0.35; // constant spikes
-const LIP_BONE_MAX_OPEN = -2.5; // extreme jaw rotation
+const MOUTH_BASE_GAIN = 65.0; // stronger gain for much wider motion
+const MOUTH_SMOOTH = 0.003; // very fast response
+const MOUTH_SPIKE_CHANCE = 0.5; // frequent spikes for dramatic openings
+const LIP_BONE_MAX_OPEN = -3.2; // even more extreme jaw rotation
+const JAW_MORPH_GAIN = 2.2; // more exaggeration for morph influence
+const OPEN_VISEME_BIAS = 0.25; // bias towards open mouth shapes
 // Force movement even when not speaking
 const FORCE_MOVEMENT_ALWAYS = true;
 
@@ -236,7 +238,7 @@ function driveVisemesFromAudio(){
     low/= (lowEnd*255); mid/= ((midEnd-lowEnd)*255); high/= ((n-midEnd)*255);
 
     // Emphasize dynamics
-    low = Math.min(1, Math.sqrt(low)*1.2);
+    low = Math.min(1, Math.sqrt(low)*1.2 + (OPEN_VISEME_BIAS||0)); // bias towards open mouth
     mid = Math.min(1, Math.sqrt(mid)*1.2);
     high= Math.min(1, Math.sqrt(high)*1.2);
 
@@ -557,7 +559,8 @@ function setJaw(value){
     v = lastJaw*(MOUTH_SMOOTH) + v*(1-MOUTH_SMOOTH);
     lastJaw = v;
     if(jawMesh && jawOpenMorphTargetIndex!==null && jawMesh.morphTargetInfluences){
-        jawMesh.morphTargetInfluences[jawOpenMorphTargetIndex]=v;
+        // Exaggerate morph influence to open wider (allow slight overshoot beyond 1)
+        jawMesh.morphTargetInfluences[jawOpenMorphTargetIndex]=Math.min(1.6, v * JAW_MORPH_GAIN);
         return;
     }
     // Fallback: rotate jaw bone around X if available
@@ -579,6 +582,11 @@ function loadModel(url){
     const loader=new GLTFLoader();
     loader.load(url, gltf=>{
         model=gltf.scene; scene.add(model); model.position.set(0,0,0); model.visible=true;
+        // Ensure teeth meshes are visible
+        model.traverse(child=>{
+            const n=(child.name||'').toLowerCase();
+            if(child.isMesh && (n.includes('teeth')||n.includes('tooth'))){ child.visible=true; }
+        });
         // Find a suitable morph target for jaw/mouth opening on any mesh
         const candidates=['jawOpen','JawOpen','JAW_Open','MouthOpen','mouthOpen','openMouth','OpenMouth','viseme_aa','AA','Aa','a','A','viseme_A'];
         jawOpenMorphTargetIndex = null; jawMesh = null; jawBone = null; jawBoneBaseX = 0;
