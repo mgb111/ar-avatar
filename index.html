@@ -445,6 +445,28 @@ function loadModel(url){
     },xhr=>{},err=>{ loadingOverlay.style.display='none'; showStatusMessage('Failed to load 3D model'); });
 }
 
+// --- Pose Helpers --- //
+function putArmsDown(){
+    if(!model) return;
+    const leftCandidates=[
+        'mixamorig_leftarm','mixamorig:leftarm','leftarm','upperarm_l','upperarm.l','l_upperarm','shoulder_l','leftshoulder','left_upper_arm','arm_l'
+    ];
+    const rightCandidates=[
+        'mixamorig_rightarm','mixamorig:rightarm','rightarm','upperarm_r','upperarm.r','r_upperarm','shoulder_r','rightshoulder','right_upper_arm','arm_r'
+    ];
+    let leftArmBone=null, rightArmBone=null;
+    model.traverse(node=>{
+        if(!node.isBone) return;
+        const n=(node.name||'').toLowerCase();
+        if(!leftArmBone && leftCandidates.some(k=>n.includes(k))) leftArmBone=node;
+        if(!rightArmBone && rightCandidates.some(k=>n.includes(k))) rightArmBone=node;
+    });
+    // Heuristic: rotate around Z to bring arms from T-pose down alongside the body
+    const downRad=1.2; // ~69deg
+    try{ if(leftArmBone){ leftArmBone.rotation.z += downRad; } }catch{}
+    try{ if(rightArmBone){ rightArmBone.rotation.z -= downRad; } }catch{}
+}
+
 // --- AR Placement --- //
 function onSelect(){
     if(!reticle.visible) return;
