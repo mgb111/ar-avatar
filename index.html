@@ -81,6 +81,8 @@ let hitTestSource=null, hitTestSourceRequested=false, groundPlane=null;
 let isPlaced=false, allowReposition=false, longPressTimer=null, longPressStart={x:0,y:0};
 const LONG_PRESS_MS=600, MOVE_TOLERANCE=10; // px
 let audioSource, activeGesture=null, initialScale=new THREE.Vector3(), initialPinchDistance=0;
+let isRotatingOneFinger=false, rotateStartX=0, rotateStartY=0, initialYaw=0;
+let initialTwoFingerAngle=0;
 
 const loadingOverlay=document.getElementById('loading-overlay');
 const arButtonContainer=document.getElementById('ar-button-container');
@@ -440,97 +442,7 @@ function loadModel(url){
 
         // no lip sync UI
         loadingOverlay.style.display='none';
-        // Put arms down (adjust common upper-arm bones)
-        try{ putArmsDown(); }catch{}
     },xhr=>{},err=>{ loadingOverlay.style.display='none'; showStatusMessage('Failed to load 3D model'); });
-}
-
-// --- Pose Helpers --- //
-function putArmsDown(){
-    if(!model) return;
-    // Candidate bone name lists (lowercased)
-    const names={
-        left:{
-            shoulder:['mixamorig_leftshoulder','mixamorig:leftshoulder','leftshoulder','shoulder_l','shoulder.l','l_shoulder'],
-            upperArm:['mixamorig_leftarm','mixamorig:leftarm','leftarm','upperarm_l','upperarm.l','l_upperarm','left_upper_arm','arm_l'],
-            foreArm:['mixamorig_leftforearm','mixamorig:leftforearm','leftforearm','lowerarm_l','lowerarm.l','l_lowerarm','left_lower_arm','forearm_l'],
-            hand:['mixamorig_lefthand','mixamorig:lefthand','lefthand','hand_l','hand.l','l_hand']
-        },
-        right:{
-            shoulder:['mixamorig_rightshoulder','mixamorig:rightshoulder','rightshoulder','shoulder_r','shoulder.r','r_shoulder'],
-            upperArm:['mixamorig_rightarm','mixamorig:rightarm','rightarm','upperarm_r','upperarm.r','r_upperarm','right_upper_arm','arm_r'],
-            foreArm:['mixamorig_rightforearm','mixamorig:rightforearm','rightforearm','lowerarm_r','lowerarm.r','r_lowerarm','right_lower_arm','forearm_r'],
-            hand:['mixamorig_righthand','mixamorig:righthand','righthand','hand_r','hand.r','r_hand']
-        }
-    };
-
-    const found={ left:{}, right:{} };
-    model.traverse(node=>{
-        if(!node.isBone) return;
-        const n=(node.name||'').toLowerCase();
-        for(const side of ['left','right']){
-            for(const part of ['shoulder','upperArm','foreArm','hand']){
-                if(!found[side][part] && names[side][part].some(k=>n.includes(k))){
-                    found[side][part]=node;
-                }
-            }
-        }
-    });
-
-    // Apply a natural relaxed pose:
-    // - Shoulders neutral with slight depression
-    // - Upper arms down along sides with a hint of adduction and forward tilt
-    // - Elbows slightly bent
-    // - Forearms gently following body line (slight inward yaw)
-    // - Wrists relaxed (slight flexion and ulnar deviation), palms inward
-    // - Fingers slightly curled if finger bones exist
-    const zDown=1.45;     // ~83° down from T-pose
-    const yAdduct=0.15;   // slight adduction toward torso
-    const xForward=0.08;  // subtle forward tilt
-    const zElbow=0.35;    // elbow bend
-    const yForeIn=0.10;   // forearm yaw inward
-    const yPalmIn=0.25;   // palms inward
-    const xWristFlex=0.10;// slight wrist flexion
-    const zUlnar=0.10;    // slight ulnar deviation
-    const shoulderDepress=0.10; // minimal shoulder depression
-
-    try{
-        const L=found.left;
-        if(L.shoulder){ L.shoulder.rotation.z += shoulderDepress; }
-        if(L.upperArm){ L.upperArm.rotation.z += zDown; L.upperArm.rotation.y += yAdduct; L.upperArm.rotation.x += xForward; }
-        if(L.foreArm){ L.foreArm.rotation.z += zElbow; L.foreArm.rotation.y += yForeIn; }
-        if(L.hand){ L.hand.rotation.y += yPalmIn; L.hand.rotation.x += xWristFlex; L.hand.rotation.z += zUlnar; }
-    }catch{}
-    try{
-        const R=found.right;
-        if(R.shoulder){ R.shoulder.rotation.z -= shoulderDepress; }
-        if(R.upperArm){ R.upperArm.rotation.z -= zDown; R.upperArm.rotation.y -= yAdduct; R.upperArm.rotation.x += xForward; }
-        if(R.foreArm){ R.foreArm.rotation.z -= zElbow; R.foreArm.rotation.y -= yForeIn; }
-        if(R.hand){ R.hand.rotation.y -= yPalmIn; R.hand.rotation.x += xWristFlex; R.hand.rotation.z -= zUlnar; }
-    }catch{}
-
-    // Gentle finger curl if present
-    const fingerNamesLeft=['index','middle','ring','pinky','little','thumb'];
-    const fingerNamesRight=['index','middle','ring','pinky','little','thumb'];
-    const curl=0.18; // radians per proximal/first segment
-    try{
-        model.traverse(node=>{
-            if(!node.isBone) return;
-            const n=(node.name||'').toLowerCase();
-            // left fingers
-            if(n.includes('left')||n.endsWith('.l')||n.endsWith('_l')){
-                if(fingerNamesLeft.some(f=>n.includes(f)) && (n.includes('1')||n.includes('prox')||n.includes('proximal'))){
-                    node.rotation.x += curl;
-                }
-            }
-            // right fingers
-            if(n.includes('right')||n.endsWith('.r')||n.endsWith('_r')){
-                if(fingerNamesRight.some(f=>n.includes(f)) && (n.includes('1')||n.includes('prox')||n.includes('proximal'))){
-                    node.rotation.x += curl;
-                }
-            }
-        });
-    }catch{}
 }
 
 // --- AR Placement --- //
@@ -552,10 +464,11 @@ function resetAvatar(){ if(model){ model.position.set(0,0,0); model.scale.set(1,
 // --- Touch Gestures for Scale --- //
 let ongoingTouches=[];
 function getDistance(touches){ const dx=touches[0].clientX-touches[1].clientX; const dy=touches[0].clientY-touches[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
+function getAngle(touches){ const dx=touches[1].clientX - touches[0].clientX; const dy=touches[1].clientY - touches[0].clientY; return Math.atan2(dy, dx); }
 function onTouchStart(e){
     // Two-finger pinch to scale
     if(e.touches.length===2 && model){
-        initialScale.copy(model.scale); initialPinchDistance=getDistance(e.touches);
+        initialScale.copy(model.scale); initialPinchDistance=getDistance(e.touches); initialTwoFingerAngle=getAngle(e.touches);
         if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
         allowReposition=false;
         return;
@@ -564,6 +477,8 @@ function onTouchStart(e){
     if(e.touches.length===1 && renderer.xr.isPresenting && isPlaced){
         const t=e.touches[0];
         longPressStart={x:t.clientX,y:t.clientY};
+        // Prepare for potential rotate if user drags
+        isRotatingOneFinger=true; rotateStartX=t.clientX; rotateStartY=t.clientY; initialYaw = model ? model.rotation.y : 0;
         if(longPressTimer){ clearTimeout(longPressTimer); }
         longPressTimer=setTimeout(()=>{
             allowReposition=true; reticle.visible=true; arInstructions.style.display='flex';
@@ -580,6 +495,15 @@ function onTouchMove(e){
     }
     if(e.touches.length===2 && model){
         const newDist=getDistance(e.touches); const scaleFactor=newDist/initialPinchDistance; model.scale.copy(initialScale.clone().multiplyScalar(scaleFactor));
+        // Two-finger twist rotation
+        const ang=getAngle(e.touches); const delta=ang-initialTwoFingerAngle; model.rotation.y = initialYaw + delta;
+    }
+    if(e.touches.length===1 && model && isRotatingOneFinger && !allowReposition){
+        // Horizontal drag rotates around Y
+        const t=e.touches[0];
+        const dx=t.clientX - rotateStartX;
+        const sensitivity=0.005; // radians per px
+        model.rotation.y = initialYaw + dx * sensitivity;
     }
 }
 function onTouchEnd(e){
@@ -591,6 +515,8 @@ function onTouchEnd(e){
         reticle.visible=false; arInstructions.style.display='none';
         allowReposition=false;
     }
+    // End one-finger rotate state
+    if(e.touches.length===0){ isRotatingOneFinger=false; }
 }
 
 // --- Window Resize --- //
