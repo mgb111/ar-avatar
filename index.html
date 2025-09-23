@@ -440,9 +440,38 @@ function loadModel(url){
             });
         }
 
+        // Apply slight arm abduction so arms are ~10° from sides
+        try{ adjustArmsSlightlyOut(model); }catch{}
         // no lip sync UI
         loadingOverlay.style.display='none';
     },xhr=>{},err=>{ loadingOverlay.style.display='none'; showStatusMessage('Failed to load 3D model'); });
+}
+
+// --- Pose adjustments --- //
+function adjustArmsSlightlyOut(root){
+    // Target common shoulder/upperarm bone names
+    const leftHints=['left','l_','_l','.l','-l'];
+    const rightHints=['right','r_','_r','.r','-r'];
+    const targetHints=['shoulder','upperarm','upper_arm','arm'];
+    const delta = 10 * Math.PI/180; // ~10 degrees
+    const matches=(name,hints)=>hints.some(h=>name.includes(h));
+
+    root.traverse(node=>{
+        if(!node.isBone) return;
+        const n=(node.name||'').toLowerCase();
+        if(!targetHints.some(h=>n.includes(h))) return;
+        // Left side
+        if(matches(n,leftHints)){
+            // Many rigs use Z for abduction. Fallback to X if negligible.
+            const beforeZ=node.rotation.z; node.rotation.z = beforeZ + delta;
+            if(Math.abs(node.rotation.z-beforeZ) < 1e-4){ node.rotation.x += delta; }
+        }
+        // Right side
+        if(matches(n,rightHints)){
+            const beforeZ=node.rotation.z; node.rotation.z = beforeZ - delta;
+            if(Math.abs(node.rotation.z-beforeZ) < 1e-4){ node.rotation.x -= delta; }
+        }
+    });
 }
 
 // --- AR Placement --- //
