@@ -112,6 +112,14 @@ Journal & Thought Leadership:
 - Guests access journals and expert advice to make weddings trend‑forward yet personal.
 `;
 
+// --- Lip-Sync Overrides ---
+// If your model uses different names, set these to force the selection.
+// Example: const LIP_MESH_NAME='Head'; const LIP_MORPH_NAME='jawOpen';
+// Or if using bones: const LIP_BONE_NAME='jaw';
+const LIP_MESH_NAME = '';
+const LIP_MORPH_NAME = '';
+const LIP_BONE_NAME = '';
+
 let camera, scene, renderer, controls, model, mixer, clock, jawOpenMorphTargetIndex = null, jawMesh = null, jawBone = null, jawBoneBaseX = 0, lastJaw=0;
 // Mouth pulsing state for more expressive movement
 let mouthPhase=0, mouthSpeed=0.8, mouthStrength=0.8, nextMouthChange=0;
@@ -470,6 +478,34 @@ function loadModel(url){
         const candidates=['jawOpen','JawOpen','JAW_Open','MouthOpen','mouthOpen','openMouth','OpenMouth','viseme_aa','AA','Aa','a','A','viseme_A'];
         jawOpenMorphTargetIndex = null; jawMesh = null; jawBone = null; jawBoneBaseX = 0;
         let bestScore = -Infinity, bestMesh = null, bestIndex = null, bestMorphName = '';
+
+        // Manual overrides: try bone override first
+        if(LIP_BONE_NAME){
+            model.traverse(child=>{
+                if(jawBone) return;
+                if(child.isBone && (child.name||'').toLowerCase().includes(LIP_BONE_NAME.toLowerCase())){
+                    jawBone = child; jawBoneBaseX = child.rotation.x;
+                }
+            });
+        }
+
+        // Manual overrides: try morph override on a specific mesh (or any mesh)
+        if(!jawBone && (LIP_MORPH_NAME || LIP_MESH_NAME)){
+            model.traverse(child=>{
+                if(jawMesh) return;
+                if(!child.isMesh || !child.morphTargetDictionary) return;
+                const meshOk = !LIP_MESH_NAME || (child.name||'').toLowerCase().includes(LIP_MESH_NAME.toLowerCase());
+                if(!meshOk) return;
+                const dict = child.morphTargetDictionary;
+                for(const [key, idx] of Object.entries(dict)){
+                    if((key||'').toLowerCase()===LIP_MORPH_NAME.toLowerCase() || (!LIP_MORPH_NAME && candidates.map(n=>n.toLowerCase()).includes((key||'').toLowerCase()))){
+                        jawMesh = child; jawOpenMorphTargetIndex = idx; return;
+                    }
+                }
+            });
+        }
+
+        // Auto-detection if overrides didn’t resolve it
         model.traverse(child=>{
             if(!child.isMesh || !child.morphTargetDictionary) return;
             const dict = child.morphTargetDictionary;
@@ -489,18 +525,29 @@ function loadModel(url){
                 if(score>bestScore){ bestScore=score; bestMesh=child; bestIndex=idx; bestMorphName=key; }
             }
         });
-        if(bestMesh && bestScore>0){ jawMesh=bestMesh; jawOpenMorphTargetIndex=bestIndex; }
+        if(!jawMesh && bestMesh && bestScore>0){ jawMesh=bestMesh; jawOpenMorphTargetIndex=bestIndex; }
         // If no morph target found, look for a jaw/mouth bone
-        if(jawOpenMorphTargetIndex===null){
+        if(jawOpenMorphTargetIndex===null && !jawBone){
             model.traverse(child=>{
                 if(jawBone) return;
                 if(child.isBone){
                     const n = (child.name||'').toLowerCase();
-                    if(n.includes('jaw') || n.includes('chin') || (n.includes('mouth') && !n.includes('upper'))){
+                    if((LIP_BONE_NAME && n.includes(LIP_BONE_NAME.toLowerCase())) || n.includes('jaw') || n.includes('chin') || (n.includes('mouth') && !n.includes('upper'))){
                         jawBone = child;
                         jawBoneBaseX = child.rotation.x;
                         
                     }
+                }
+            });
+        }
+
+        // Ultimate fallback: pick first mesh with any morphs
+        if(!jawMesh && jawOpenMorphTargetIndex===null){
+            model.traverse(child=>{
+                if(jawMesh) return;
+                if(child.isMesh && child.morphTargetDictionary){
+                    const firstKey = Object.keys(child.morphTargetDictionary)[0];
+                    if(firstKey!==undefined){ jawMesh=child; jawOpenMorphTargetIndex=child.morphTargetDictionary[firstKey]; }
                 }
             });
         }
