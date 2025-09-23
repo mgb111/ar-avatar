@@ -43,6 +43,12 @@
 </div>
 
 <div id="ar-controls-container" style="position:absolute; bottom:2rem; left:50%; transform:translateX(-50%); z-index:10; display:none; flex-direction:column; align-items:center; gap:0.5rem;">
+    <button id="mic-button" class="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white font-bold p-4 rounded-full transition duration-200 shadow-lg flex justify-center items-center">
+        <svg id="mic-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
+        <div id="thinking-icon" class="thinking-loader" style="display:none; width:24px; height:24px;"></div>
+    </button>
+    <div id="mic-level"><div id="mic-level-fill"></div></div>
+    <!-- Text input fallback -->
     <div style="display:flex; gap:0.5rem; width:90vw; max-width:520px;">
         <input id="text-input" type="text" placeholder="Type your prompt..." class="flex-1 px-3 py-2 rounded-md bg-gray-800 text-gray-100 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500" />
         <button id="send-button" class="px-4 py-2 rounded-md bg-green-600 hover:bg-green-700 text-white font-semibold">Send</button>
@@ -117,7 +123,7 @@ const LIP_BONE_NAME = '';
 // --- Lip-Sync Tuning (feel free to tweak quickly) ---
 // EXTREME settings to force visible lip movement
 const MOUTH_BASE_GAIN = 3.0; // reasonable gain from audio amplitude
-const MOUTH_SMOOTH = 0.2;   // moderate smoothing for natural, smooth motion
+const MOUTH_SMOOTH = 0.3;   // some smoothing for natural motion
 const MOUTH_SPIKE_CHANCE = 0.0; // no random spikes
 const LIP_BONE_MAX_OPEN = -0.6; // conservative jaw rotation if using bones
 const JAW_MORPH_GAIN = 1.3; // slightly stronger morph influence
@@ -132,8 +138,8 @@ let camera, scene, renderer, controls, model, mixer, clock, jawOpenMorphTargetIn
 let visemeTargets = [];
 // Mouth pulsing state for more expressive movement
 let mouthPhase=0, mouthSpeed=0.8, mouthStrength=0.8, nextMouthChange=0;
-// Random pulsing state while speaking
-let mouthToggleOpen=false, lastMouthToggle=0; // legacy vars (unused by pulsing)
+// Smooth random open/close while speaking
+let mouthCurrent=0, mouthTarget=0;
 let reticle, speechRecognition, isListening=false, isSpeaking=false, isAIThinking=false, currentAudio=null, audioContext, analyser, dataArray;
 let hitTestSource=null, hitTestSourceRequested=false, groundPlane=null;
 let isPlaced=false, allowReposition=false, longPressTimer=null, longPressStart={x:0,y:0};
@@ -147,6 +153,10 @@ const arButtonContainer=document.getElementById('ar-button-container');
 const arInstructions=document.getElementById('ar-instructions');
 const statusMessage=document.getElementById('status-message');
 const arControlsContainer=document.getElementById('ar-controls-container');
+const micButton=document.getElementById('mic-button');
+const micIcon=document.getElementById('mic-icon');
+const thinkingIcon=document.getElementById('thinking-icon');
+const micLevelFill=document.getElementById('mic-level-fill');
 const textInput=document.getElementById('text-input');
 const sendButton=document.getElementById('send-button');
 
@@ -186,8 +196,10 @@ function init(){
     controls.update();
 
     loadModel(defaultAvatarUrl);
+    setupSpeechRecognition();
     setupAR();
 
+    micButton.addEventListener('click',toggleListening);
     if(sendButton){
         const sendText=()=>{ const v=textInput?.value?.trim(); if(!v||isSpeaking||isAIThinking) return; queueAI(v); textInput.value=''; };
         sendButton.addEventListener('click',sendText);
@@ -200,8 +212,10 @@ function init(){
     renderer.domElement.addEventListener('touchend',onTouchEnd);
 
     renderer.setAnimationLoop(animate);
-    // Start jaw animation loop only when audio plays or forced (disabled by default)
-    if(FORCE_MOVEMENT_ALWAYS){ try{ animateJawSync(); }catch{} }
+    // Start jaw animation loop even without audio so mouth moves anyhow if forced
+    if(FORCE_MOVEMENT_ALWAYS){
+        try{ animateJawSync(); }catch{}
+    }
 }
 
 // --- Functions --- //
@@ -328,7 +342,76 @@ function setupAR(){
     scene.add(controller);
 }
 
-// (Microphone input removed)
+// --- Speech Recognition --- //
+function setupSpeechRecognition(){
+    const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(SpeechRecognition){
+        speechRecognition=new SpeechRecognition();
+        // Android Chrome works better with interimResults and sometimes continuous
+        speechRecognition.continuous=true;
+        speechRecognition.lang=navigator.language||'en-US';
+        speechRecognition.interimResults=true;
+        speechRecognition.maxAlternatives=1;
+
+        speechRecognition.onresult=(event)=>{
+            // Build the full transcript including interim results
+            let interim=''; let final='';
+            for(let i=event.resultIndex;i<event.results.length;i++){
+                const res=event.results[i];
+                if(res.isFinal) queueAI(res[0].transcript.trim());
+            }
+        };
+        speechRecognition.onstart=()=>{ isListening=true; micButton.classList.add('bg-red-600','hover:bg-red-700'); micButton.classList.remove('bg-blue-600','hover:bg-blue-700'); };
+        speechRecognition.onend=()=>{ isListening=false; micButton.classList.remove('bg-red-600','hover:bg-red-700'); micButton.classList.add('bg-blue-600','hover:bg-blue-700'); };
+        speechRecognition.onaudiostart=()=>{};
+        speechRecognition.onaudioend=()=>{ /* often fires quickly on Android */ };
+        speechRecognition.onspeechstart=()=>{};
+        speechRecognition.onspeechend=()=>{ /* recognition will finalize shortly */ };
+        // Single auto-retry on no match (some Android builds require a quick restart)
+        let didRetryNoMatch=false;
+        speechRecognition.onnomatch=()=>{
+            if(!didRetryNoMatch){
+                didRetryNoMatch=true;
+                try{ speechRecognition.abort(); }catch{}
+                setTimeout(()=>{ try{ speechRecognition.start(); }catch{} }, 200);
+            } else {
+                showStatusMessage('Did not catch that. Please try again.', false);
+            }
+        };
+        speechRecognition.onerror=(event)=>{
+            let hint='';
+            if(event.error==='not-allowed' || event.error==='denied') hint='Please allow microphone access in your browser settings.';
+            if(event.error==='no-speech') hint='No speech detected. Try speaking closer to the mic.';
+            if(event.error==='aborted') hint='Recognition aborted. Tap the mic again.';
+            showStatusMessage(`Microphone error: ${event.error}. ${hint}`);
+        };
+        // Reset retry flag when session ends
+        speechRecognition.onend=(()=>{
+            const origEnd = speechRecognition.onend;
+            return ()=>{
+                didRetryNoMatch=false;
+                isListening=false; micButton.classList.remove('bg-red-600','hover:bg-red-700'); micButton.classList.add('bg-blue-600','hover:bg-blue-700');
+                if(typeof origEnd==='function') origEnd();
+            };
+        })();
+    } else { 
+        micButton.disabled=true; showStatusMessage('Voice input not supported',false); 
+    }
+}
+
+function toggleListening(){
+    if(isListening||isSpeaking||isAIThinking) return;
+    if(currentAudio) currentAudio.pause();
+    // SpeechRecognition requires secure context (https or localhost)
+    const isSecure = location.protocol==='https:' || location.hostname==='localhost';
+    if(!isSecure){ showStatusMessage('Voice input requires HTTPS. Please use a secure URL.'); return; }
+    if(navigator.mediaDevices?.getUserMedia){
+        navigator.mediaDevices.getUserMedia({audio:true}).then(()=>{
+            try{ speechRecognition.abort(); }catch{}
+            try{ speechRecognition.start(); }catch{ showStatusMessage('Unable to start speech recognition'); }
+        }).catch(()=>{ showStatusMessage('Microphone access denied'); });
+    } else if(speechRecognition){ speechRecognition.start(); } else { showStatusMessage('Voice input unavailable'); }
+}
 
 // --- AI Queue --- //
 function queueAI(prompt){ aiQueue.push(prompt); if(!isAIThinking && !isSpeaking) processAIQueue(); }
@@ -341,7 +424,7 @@ async function processAIQueue(){
 
 // --- OpenAI API --- //
 async function getAIResponse(userPrompt){
-    isAIThinking=true; if(sendButton) sendButton.disabled=true; if(textInput) textInput.disabled=true;
+    isAIThinking=true; micIcon.style.display='none'; thinkingIcon.style.display='block'; micButton.disabled=true; if(sendButton) sendButton.disabled=true; if(textInput) textInput.disabled=true;
 
     const systemPrompt = `You are the brand ambassador avatar for Wedding Asia Mumbai at JW Marriott Juhu on Sep 24–25, 2025. Be warm, concise and conversational. Proactively describe the event when appropriate, and answer questions accurately using the provided context. Keep replies to 1–2 sentences unless the user asks for more details. If asked for contact/registration, mention: Call 92163 22509. Context:\n\n${EVENT_CONTEXT}`;
 
@@ -363,7 +446,7 @@ async function getAIResponse(userPrompt){
         const text=data.text||"Sorry, I couldn't generate a response.";
         await generateAndPlaySpeech(text.trim());
     } catch(error){ showStatusMessage(error.message); console.error(error); }
-    finally{ isAIThinking=false; if(sendButton) sendButton.disabled=false; if(textInput) textInput.disabled=false; }
+    finally{ isAIThinking=false; micIcon.style.display='block'; thinkingIcon.style.display='none'; micButton.disabled=false; if(sendButton) sendButton.disabled=false; if(textInput) textInput.disabled=false; }
 }
 
 // --- TTS + Lip-Sync --- //
@@ -441,36 +524,24 @@ function animateJawSync(){
         return;
     }
 
-    // Randomized smooth pulsing while speaking
+    // Smooth random open/close while speaking
     const now = performance.now();
-    if(now > nextMouthChange){
-        mouthSpeed = 0.5 + Math.random()*1.0;     // 0.5..1.5 speed
-        mouthStrength = 0.5 + Math.random()*0.7;  // 0.5..1.2 strength
-        nextMouthChange = now + 250 + Math.random()*700; // 250..950ms blocks
+    if(now >= nextMouthChange){
+        // Pick a new random target openness and next change time
+        // Favor mid-to-high values occasionally to ensure visibility
+        const r = Math.random();
+        if(r < 0.15) mouthTarget = 0.1 + Math.random()*0.2;          // mostly closed
+        else if(r < 0.65) mouthTarget = 0.35 + Math.random()*0.35;    // medium range
+        else mouthTarget = 0.7 + Math.random()*0.3;                    // wide open now and then
+        nextMouthChange = now + 220 + Math.random()*580;               // 220..800 ms
     }
-    mouthPhase += mouthSpeed * 0.12; // advance phase slowly for smoothness
-
-    // Base from audio amplitude if available
-    let base = 0;
-    if(analyser && dataArray){
-        analyser.getByteFrequencyData(dataArray);
-        const avg = dataArray.reduce((a,b)=>a+b,0)/(dataArray.length||1)/255;
-        base = Math.min(1, avg * MOUTH_BASE_GAIN * 0.3); // mild contribution
-    }
-
-    // Smooth random pulse (0..1) with easing for softer transitions
-    const sine = Math.abs(Math.sin(mouthPhase));
-    const pulse = Math.pow(sine, 0.65) * mouthStrength; // spend more time near extremes
-
-    // Occasional gentle spike to avoid monotony
-    const spike = (Math.random() < 0.1) ? 0.2 : 0.0;
-
-    const jawV = Math.min(1, Math.max(0, 0.6*pulse + 0.4*base + spike));
-
+    // Interpolate smoothly towards target
+    const lerp = 0.15; // smoothing factor per frame
+    mouthCurrent += (mouthTarget - mouthCurrent) * lerp;
     // Optionally drive visemes if enabled
     if(USE_VISEMES && analyser && dataArray) driveVisemesFromAudio();
-    // Finally apply the smoothed random jaw value
-    setJaw(jawV);
+    // Apply the jaw value last so visemes don't override it
+    setJaw(mouthCurrent);
 }
 
 function setJaw(value){
