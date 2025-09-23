@@ -220,7 +220,7 @@ function setupAR(){
 
     reticle=new THREE.Mesh(
         new THREE.RingGeometry(0.05,0.07,32).rotateX(-Math.PI/2),
-        new THREE.MeshBasicMaterial()
+        new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:0.0 })
     );
     reticle.matrixAutoUpdate=false;
     reticle.visible=false;
@@ -407,7 +407,18 @@ function animateJawSync(){
     requestAnimationFrame(animateJawSync);
     analyser.getByteFrequencyData(dataArray);
     const avgAmplitude=dataArray.reduce((a,b)=>a+b,0)/dataArray.length/256;
-    setJaw(avgAmplitude*8.0); // much stronger movement
+    // Base amplitude from audio (already boosted elsewhere)
+    let base = avgAmplitude*8.0;
+    // Add lively motion while speaking: sine oscillation + small random jitter
+    const t = performance.now()/1000;
+    const osc = (Math.sin(t*12)+1)/2 * 0.25; // up to +0.25
+    const jitter = (Math.random()-0.5) * 0.12; // +/- 0.06
+    let lively = base + osc + jitter;
+    // Ensure some minimal movement while speaking even on low audio
+    if(isSpeaking) lively = Math.max(lively, 0.12 + (Math.random()*0.08));
+    // Clamp and send
+    lively = Math.min(Math.max(lively,0),1);
+    setJaw(lively);
 }
 
 function setJaw(value){
@@ -493,7 +504,8 @@ function onSelect(){
         model.position.setFromMatrixPosition(reticle.matrix);
         model.visible=true;
         arInstructions.style.display='none';
-        reticle.visible=false;
+        // After first placement, keep reticle fully transparent
+        reticle.visible=true; reticle.material.opacity=0.0;
         isPlaced=true;
     }
 }
@@ -521,7 +533,7 @@ function onTouchStart(e){
         isRotatingOneFinger=true; rotateStartX=t.clientX; rotateStartY=t.clientY; initialYaw = model ? model.rotation.y : 0;
         if(longPressTimer){ clearTimeout(longPressTimer); }
         longPressTimer=setTimeout(()=>{
-            allowReposition=true; reticle.visible=true; arInstructions.style.display='flex';
+            allowReposition=true; reticle.visible=true; reticle.material.opacity=0.8; arInstructions.style.display='flex';
         }, LONG_PRESS_MS);
     }
 }
@@ -552,7 +564,8 @@ function onTouchEnd(e){
     // If long-press enabled reposition and reticle is visible, move model to reticle on release
     if(allowReposition && reticle.visible && model){
         model.position.setFromMatrixPosition(reticle.matrix);
-        reticle.visible=false; arInstructions.style.display='none';
+        // Hide reticle again after reposition by making it transparent
+        reticle.visible=true; reticle.material.opacity=0.0; arInstructions.style.display='none';
         allowReposition=false;
     }
     // End one-finger rotate state
