@@ -15,7 +15,7 @@
     #ar-instructions { display:none; }
     #status-message { position:absolute; top:2rem; left:50%; transform:translateX(-50%); background-color: rgba(239,68,68,0.8); color:white; padding:0.5rem 1rem; border-radius:0.5rem; z-index:110; font-size:0.875rem; display:none; text-align:center; }
     #debug-panel { position:absolute; top:1rem; right:1rem; background-color: rgba(0,0,0,0.8); color:white; padding:1rem; border-radius:0.5rem; font-size:0.75rem; z-index:120; max-width:300px; }
-    #test-button, #reset-button { background-color:#10b981; color:white; padding:0.5rem 1rem; border-radius:0.5rem; border:none; cursor:pointer; margin-top:0.5rem; }
+    #test-button, #reset-button, #lip-test-button { background-color:#10b981; color:white; padding:0.5rem 1rem; border-radius:0.5rem; border:none; cursor:pointer; margin-top:0.5rem; }
     .loader, .thinking-loader { border:4px solid #4b5563; border-top:4px solid #60a5fa; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; }
     .loader { margin-bottom:1rem; }
     @keyframes spin { 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
@@ -454,24 +454,28 @@ function loadModel(url){
         // Find a suitable morph target for jaw/mouth opening on any mesh
         const candidates=['jawOpen','JawOpen','JAW_Open','MouthOpen','mouthOpen','openMouth','OpenMouth','viseme_aa','AA','Aa','a','A','viseme_A'];
         jawOpenMorphTargetIndex = null; jawMesh = null; jawBone = null; jawBoneBaseX = 0;
+        let bestScore = -Infinity, bestMesh = null, bestIndex = null, bestMorphName = '';
         model.traverse(child=>{
-            if(jawOpenMorphTargetIndex!==null) return; // already found
-            if(child.isMesh && child.morphTargetDictionary){
-                const dict = child.morphTargetDictionary;
-                try{ console.debug('Morph targets on', child.name, Object.keys(dict)); }catch{}
-                // Try exact candidates first
-                for(const name of candidates){
-                    if(dict[name]!==undefined){ jawOpenMorphTargetIndex = dict[name]; jawMesh = child; return; }
-                }
-                // Fallback: case-insensitive contains 'jaw' or 'mouth' or 'open'
-                for(const key of Object.keys(dict)){
-                    const k = key.toLowerCase();
-                    if(k.includes('jaw') || (k.includes('mouth') && (k.includes('open')||k.includes('aa')||k.includes('a')))){
-                        jawOpenMorphTargetIndex = dict[key]; jawMesh = child; return;
-                    }
-                }
+            if(!child.isMesh || !child.morphTargetDictionary) return;
+            const dict = child.morphTargetDictionary;
+            const meshName = (child.name||'').toLowerCase();
+            try{ console.debug('Morph targets on', child.name, Object.keys(dict)); }catch{}
+            for(const [key, idx] of Object.entries(dict)){
+                const k = key.toLowerCase();
+                // Base score from morph name
+                let score = 0;
+                if(candidates.map(n=>n.toLowerCase()).includes(k)) score += 5;
+                if(k.includes('jaw')) score += 4;
+                if(k.includes('mouth')) score += 3;
+                if(k.includes('open')) score += 2;
+                if(k.includes('aa') || k==='a') score += 1;
+                // Mesh preference
+                if(meshName.includes('head')||meshName.includes('face')||meshName.includes('jaw')||meshName.includes('mouth')) score += 3;
+                if(meshName.includes('eye')||meshName.includes('eyelid')||meshName.includes('brow')||meshName.includes('teeth')||meshName.includes('tongue')) score -= 5;
+                if(score>bestScore){ bestScore=score; bestMesh=child; bestIndex=idx; bestMorphName=key; }
             }
         });
+        if(bestMesh && bestScore>0){ jawMesh=bestMesh; jawOpenMorphTargetIndex=bestIndex; }
         // If no morph target found, look for a jaw/mouth bone
         if(jawOpenMorphTargetIndex===null){
             model.traverse(child=>{
