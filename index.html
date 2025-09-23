@@ -60,6 +60,11 @@
         <div id="thinking-icon" class="thinking-loader" style="display:none; width:24px; height:24px;"></div>
     </button>
     <div id="mic-level"><div id="mic-level-fill"></div></div>
+    <!-- Text input fallback -->
+    <div style="display:flex; gap:0.5rem; width:90vw; max-width:520px;">
+        <input id="text-input" type="text" placeholder="Type your prompt..." class="flex-1 px-3 py-2 rounded-md bg-gray-800 text-gray-100 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        <button id="send-button" class="px-4 py-2 rounded-md bg-green-600 hover:bg-green-700 text-white font-semibold">Send</button>
+    </div>
 </div>
 
 <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
@@ -98,6 +103,8 @@ const thinkingIcon=document.getElementById('thinking-icon');
 const testButton=document.getElementById('test-button');
 const resetButton=document.getElementById('reset-button');
 const micLevelFill=document.getElementById('mic-level-fill');
+const textInput=document.getElementById('text-input');
+const sendButton=document.getElementById('send-button');
 
 const apiKeyStatus=document.getElementById('api-key-status');
 const speechStatus=document.getElementById('speech-status');
@@ -160,6 +167,11 @@ function init(){
     micButton.addEventListener('click',toggleListening);
     testButton.addEventListener('click',()=>queueAI("Hello, can you introduce yourself?"));
     resetButton.addEventListener('click',resetAvatar);
+    if(sendButton){
+        const sendText=()=>{ const v=textInput?.value?.trim(); if(!v||isSpeaking||isAIThinking) return; queueAI(v); textInput.value=''; };
+        sendButton.addEventListener('click',sendText);
+        textInput?.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); sendText(); }});
+    }
 
     window.addEventListener('resize',onWindowResize);
     renderer.domElement.addEventListener('touchstart',onTouchStart,{passive:false});
@@ -302,7 +314,7 @@ async function processAIQueue(){
 
 // --- OpenAI API --- //
 async function getAIResponse(userPrompt){
-    isAIThinking=true; micIcon.style.display='none'; thinkingIcon.style.display='block'; micButton.disabled=true;
+    isAIThinking=true; micIcon.style.display='none'; thinkingIcon.style.display='block'; micButton.disabled=true; if(sendButton) sendButton.disabled=true; if(textInput) textInput.disabled=true;
 
     const systemPrompt=`You are a helpful AR avatar assistant. Be concise and conversational.`;
 
@@ -324,7 +336,7 @@ async function getAIResponse(userPrompt){
         const text=data.text||"Sorry, I couldn't generate a response.";
         await generateAndPlaySpeech(text.trim());
     } catch(error){ showStatusMessage(error.message); console.error(error); }
-    finally{ isAIThinking=false; micIcon.style.display='block'; thinkingIcon.style.display='none'; micButton.disabled=false; }
+    finally{ isAIThinking=false; micIcon.style.display='block'; thinkingIcon.style.display='none'; micButton.disabled=false; if(sendButton) sendButton.disabled=false; if(textInput) textInput.disabled=false; }
 }
 
 // --- TTS + Lip-Sync --- //
