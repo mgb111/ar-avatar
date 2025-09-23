@@ -407,13 +407,16 @@ function animateJawSync(){
     requestAnimationFrame(animateJawSync);
     analyser.getByteFrequencyData(dataArray);
     const avgAmplitude=dataArray.reduce((a,b)=>a+b,0)/dataArray.length/256;
-    setJaw(avgAmplitude*3.5); // stronger movement for visibility
+    setJaw(avgAmplitude*8.0); // much stronger movement
 }
 
 function setJaw(value){
     // Smooth value to avoid jitter
     let v = Math.min(Math.max(value,0),1);
-    v = lastJaw*0.6 + v*0.4; // smoothing
+    // Non-linear boost to emphasize small amplitudes
+    v = Math.sqrt(v);
+    // Faster response, lighter smoothing
+    v = lastJaw*0.3 + v*0.7;
     lastJaw = v;
     if(jawMesh && jawOpenMorphTargetIndex!==null && jawMesh.morphTargetInfluences){
         jawMesh.morphTargetInfluences[jawOpenMorphTargetIndex]=v;
@@ -422,7 +425,7 @@ function setJaw(value){
     // Fallback: rotate jaw bone around X if available
     if(jawBone){
         // Typical jaw open is rotation downwards (negative X in many rigs). Adjust factor as needed.
-        const maxOpen = -0.35; // ~20 degrees
+        const maxOpen = -0.8; // ~46 degrees for more noticeable motion
         jawBone.rotation.x = jawBoneBaseX + v * maxOpen;
         if(Math.abs(jawBone.rotation.x-jawBoneBaseX)<0.01){
             jawBone.rotation.y = jawBoneBaseX + v * maxOpen;
