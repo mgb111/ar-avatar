@@ -87,7 +87,7 @@ import { ARButton } from 'three/addons/webxr/ARButton.js';
 // Example: https://your-backend.example.com
 const BACKEND_URL = 'https://ar-avatar.vercel.app';
 
-let camera, scene, renderer, controls, model, mixer, clock, jawOpenMorphTargetIndex = null;
+let camera, scene, renderer, controls, model, mixer, clock, jawOpenMorphTargetIndex = null, jawMesh = null, jawBone = null, jawBoneBaseX = 0;
 let reticle, speechRecognition, isListening=false, isSpeaking=false, isAIThinking=false, currentAudio=null, audioContext, analyser, dataArray;
 let hitTestSource=null, hitTestSourceRequested=false, groundPlane=null;
 let audioSource, activeGesture=null, initialScale=new THREE.Vector3(), initialPinchDistance=0;
@@ -404,21 +404,65 @@ async function generateAndPlaySpeech(text){
 
 // --- Jaw Lip-Sync --- //
 function animateJawSync(){
-    if(!analyser || jawOpenMorphTargetIndex===null || !model) return;
+    if(!analyser || !model) return;
     requestAnimationFrame(animateJawSync);
     analyser.getByteFrequencyData(dataArray);
     const avgAmplitude=dataArray.reduce((a,b)=>a+b,0)/dataArray.length/256;
-    setJaw(avgAmplitude*1.5); // scale factor
+    setJaw(avgAmplitude*2.5); // slightly stronger movement for visibility
 }
 
-function setJaw(value){ if(model && jawOpenMorphTargetIndex!==null) model.morphTargetInfluences[jawOpenMorphTargetIndex]=Math.min(Math.max(value,0),1); }
+function setJaw(value){
+    const v = Math.min(Math.max(value,0),1);
+    if(jawMesh && jawOpenMorphTargetIndex!==null && jawMesh.morphTargetInfluences){
+        jawMesh.morphTargetInfluences[jawOpenMorphTargetIndex]=v;
+        return;
+    }
+    // Fallback: rotate jaw bone around X if available
+    if(jawBone){
+        // Typical jaw open is rotation downwards (negative X in many rigs). Adjust factor as needed.
+        const maxOpen = -0.35; // ~20 degrees
+        jawBone.rotation.x = jawBoneBaseX + v * maxOpen;
+    }
+}
 
 // --- Model Loading --- //
 function loadModel(url){
     const loader=new GLTFLoader();
     loader.load(url, gltf=>{
         model=gltf.scene; scene.add(model); model.position.set(0,0,0); model.visible=true;
-        model.traverse(child=>{ if(child.isMesh && child.morphTargetDictionary && child.morphTargetDictionary['jawOpen']!==undefined) jawOpenMorphTargetIndex=child.morphTargetDictionary['jawOpen']; });
+        // Find a suitable morph target for jaw/mouth opening on any mesh
+        const candidates=['jawOpen','JawOpen','mouthOpen','MouthOpen','viseme_aa','AA','Aa','a','openMouth'];
+        jawOpenMorphTargetIndex = null; jawMesh = null; jawBone = null; jawBoneBaseX = 0;
+        model.traverse(child=>{
+            if(jawOpenMorphTargetIndex!==null) return; // already found
+            if(child.isMesh && child.morphTargetDictionary){
+                const dict = child.morphTargetDictionary;
+                // Try exact candidates first
+                for(const name of candidates){
+                    if(dict[name]!==undefined){ jawOpenMorphTargetIndex = dict[name]; jawMesh = child; return; }
+                }
+                // Fallback: case-insensitive contains 'jaw' or 'mouth' or 'open'
+                for(const key of Object.keys(dict)){
+                    const k = key.toLowerCase();
+                    if(k.includes('jaw') || (k.includes('mouth') && (k.includes('open')||k.includes('aa')||k.includes('a')))){
+                        jawOpenMorphTargetIndex = dict[key]; jawMesh = child; return;
+                    }
+                }
+            }
+        });
+        // If no morph target found, look for a jaw/mouth bone
+        if(jawOpenMorphTargetIndex===null){
+            model.traverse(child=>{
+                if(jawBone) return;
+                if(child.isBone){
+                    const n = (child.name||'').toLowerCase();
+                    if(n.includes('jaw') || n.includes('chin') || (n.includes('mouth') && !n.includes('upper'))){
+                        jawBone = child;
+                        jawBoneBaseX = child.rotation.x;
+                    }
+                }
+            });
+        }
         loadingOverlay.style.display='none';
         modelStatus.textContent='Model: ✅ Loaded'; modelStatus.style.color='#10b981';
     },xhr=>{},err=>{ console.error(err); loadingOverlay.style.display='none'; showStatusMessage('Failed to load 3D model'); });
