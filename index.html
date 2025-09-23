@@ -113,6 +113,8 @@ Journal & Thought Leadership:
 `;
 
 let camera, scene, renderer, controls, model, mixer, clock, jawOpenMorphTargetIndex = null, jawMesh = null, jawBone = null, jawBoneBaseX = 0, lastJaw=0;
+// Mouth pulsing state for more expressive movement
+let mouthPhase=0, mouthSpeed=0.8, mouthStrength=0.8, nextMouthChange=0;
 let reticle, speechRecognition, isListening=false, isSpeaking=false, isAIThinking=false, currentAudio=null, audioContext, analyser, dataArray;
 let hitTestSource=null, hitTestSourceRequested=false, groundPlane=null;
 let isPlaced=false, allowReposition=false, longPressTimer=null, longPressStart={x:0,y:0};
@@ -220,7 +222,7 @@ function setupAR(){
 
     reticle=new THREE.Mesh(
         new THREE.RingGeometry(0.05,0.07,32).rotateX(-Math.PI/2),
-        new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:0.0 })
+        new THREE.MeshBasicMaterial()
     );
     reticle.matrixAutoUpdate=false;
     reticle.visible=false;
@@ -407,18 +409,30 @@ function animateJawSync(){
     requestAnimationFrame(animateJawSync);
     analyser.getByteFrequencyData(dataArray);
     const avgAmplitude=dataArray.reduce((a,b)=>a+b,0)/dataArray.length/256;
-    // Base amplitude from audio (already boosted elsewhere)
-    let base = avgAmplitude*8.0;
-    // Add lively motion while speaking: sine oscillation + small random jitter
-    const t = performance.now()/1000;
-    const osc = (Math.sin(t*12)+1)/2 * 0.25; // up to +0.25
-    const jitter = (Math.random()-0.5) * 0.12; // +/- 0.06
-    let lively = base + osc + jitter;
-    // Ensure some minimal movement while speaking even on low audio
-    if(isSpeaking) lively = Math.max(lively, 0.12 + (Math.random()*0.08));
-    // Clamp and send
-    lively = Math.min(Math.max(lively,0),1);
-    setJaw(lively);
+
+    // Base derived from audio
+    let base = avgAmplitude*8.0; // strong base
+    if(!isSpeaking){
+        setJaw(base);
+        return;
+    }
+
+    // Randomized pulsing while speaking to create visible open/close cycles
+    const now = performance.now();
+    if(now > nextMouthChange){
+        mouthSpeed = 0.6 + Math.random()*1.2;       // 0.6..1.8
+        mouthStrength = 0.6 + Math.random()*0.6;    // 0.6..1.2
+        nextMouthChange = now + 250 + Math.random()*550; // change every 250-800ms
+    }
+    mouthPhase += mouthSpeed*0.25; // advance phase
+    const pulse = Math.pow(Math.abs(Math.sin(mouthPhase)), 0.55) * mouthStrength; // sharper, more time at extremes
+
+    // Occasionally force a full open/close frame for dramatic effect
+    let spike = 0;
+    if(Math.random() < 0.025) spike = 1.0;
+
+    const combined = Math.max(base, pulse, spike);
+    setJaw(Math.min(combined, 1));
 }
 
 function setJaw(value){
@@ -426,8 +440,8 @@ function setJaw(value){
     let v = Math.min(Math.max(value,0),1);
     // Non-linear boost to emphasize small amplitudes
     v = Math.sqrt(v);
-    // Faster response, lighter smoothing
-    v = lastJaw*0.3 + v*0.7;
+    // Even faster response, minimal smoothing for snappier motion
+    v = lastJaw*0.15 + v*0.85;
     lastJaw = v;
     if(jawMesh && jawOpenMorphTargetIndex!==null && jawMesh.morphTargetInfluences){
         jawMesh.morphTargetInfluences[jawOpenMorphTargetIndex]=v;
@@ -504,8 +518,7 @@ function onSelect(){
         model.position.setFromMatrixPosition(reticle.matrix);
         model.visible=true;
         arInstructions.style.display='none';
-        // After first placement, keep reticle fully transparent
-        reticle.visible=true; reticle.material.opacity=0.0;
+        reticle.visible=false;
         isPlaced=true;
     }
 }
@@ -533,7 +546,7 @@ function onTouchStart(e){
         isRotatingOneFinger=true; rotateStartX=t.clientX; rotateStartY=t.clientY; initialYaw = model ? model.rotation.y : 0;
         if(longPressTimer){ clearTimeout(longPressTimer); }
         longPressTimer=setTimeout(()=>{
-            allowReposition=true; reticle.visible=true; reticle.material.opacity=0.8; arInstructions.style.display='flex';
+            allowReposition=true; reticle.visible=true; arInstructions.style.display='flex';
         }, LONG_PRESS_MS);
     }
 }
@@ -564,8 +577,7 @@ function onTouchEnd(e){
     // If long-press enabled reposition and reticle is visible, move model to reticle on release
     if(allowReposition && reticle.visible && model){
         model.position.setFromMatrixPosition(reticle.matrix);
-        // Hide reticle again after reposition by making it transparent
-        reticle.visible=true; reticle.material.opacity=0.0; arInstructions.style.display='none';
+        reticle.visible=false; arInstructions.style.display='none';
         allowReposition=false;
     }
     // End one-finger rotate state
