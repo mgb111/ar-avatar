@@ -448,23 +448,56 @@ function loadModel(url){
 // --- Pose Helpers --- //
 function putArmsDown(){
     if(!model) return;
-    const leftCandidates=[
-        'mixamorig_leftarm','mixamorig:leftarm','leftarm','upperarm_l','upperarm.l','l_upperarm','shoulder_l','leftshoulder','left_upper_arm','arm_l'
-    ];
-    const rightCandidates=[
-        'mixamorig_rightarm','mixamorig:rightarm','rightarm','upperarm_r','upperarm.r','r_upperarm','shoulder_r','rightshoulder','right_upper_arm','arm_r'
-    ];
-    let leftArmBone=null, rightArmBone=null;
+    // Candidate bone name lists (lowercased)
+    const names={
+        left:{
+            shoulder:['mixamorig_leftshoulder','mixamorig:leftshoulder','leftshoulder','shoulder_l','shoulder.l','l_shoulder'],
+            upperArm:['mixamorig_leftarm','mixamorig:leftarm','leftarm','upperarm_l','upperarm.l','l_upperarm','left_upper_arm','arm_l'],
+            foreArm:['mixamorig_leftforearm','mixamorig:leftforearm','leftforearm','lowerarm_l','lowerarm.l','l_lowerarm','left_lower_arm','forearm_l'],
+            hand:['mixamorig_lefthand','mixamorig:lefthand','lefthand','hand_l','hand.l','l_hand']
+        },
+        right:{
+            shoulder:['mixamorig_rightshoulder','mixamorig:rightshoulder','rightshoulder','shoulder_r','shoulder.r','r_shoulder'],
+            upperArm:['mixamorig_rightarm','mixamorig:rightarm','rightarm','upperarm_r','upperarm.r','r_upperarm','right_upper_arm','arm_r'],
+            foreArm:['mixamorig_rightforearm','mixamorig:rightforearm','rightforearm','lowerarm_r','lowerarm.r','r_lowerarm','right_lower_arm','forearm_r'],
+            hand:['mixamorig_righthand','mixamorig:righthand','righthand','hand_r','hand.r','r_hand']
+        }
+    };
+
+    const found={ left:{}, right:{} };
     model.traverse(node=>{
         if(!node.isBone) return;
         const n=(node.name||'').toLowerCase();
-        if(!leftArmBone && leftCandidates.some(k=>n.includes(k))) leftArmBone=node;
-        if(!rightArmBone && rightCandidates.some(k=>n.includes(k))) rightArmBone=node;
+        for(const side of ['left','right']){
+            for(const part of ['shoulder','upperArm','foreArm','hand']){
+                if(!found[side][part] && names[side][part].some(k=>n.includes(k))){
+                    found[side][part]=node;
+                }
+            }
+        }
     });
-    // Heuristic: rotate around Z to bring arms from T-pose down alongside the body
-    const downRad=1.2; // ~69deg
-    try{ if(leftArmBone){ leftArmBone.rotation.z += downRad; } }catch{}
-    try{ if(rightArmBone){ rightArmBone.rotation.z -= downRad; } }catch{}
+
+    // Apply a natural pose:
+    // - Upper arms down along sides (~85 deg from T) with slight forward tilt
+    // - Forearms slightly bent (~15 deg)
+    // - Hands/palms slightly inward
+    const zDown=1.5; // ~86 degrees
+    const xForward=0.10; // slight forward tilt
+    const zElbow=0.25; // slight elbow bend
+    const yHandIn=0.30; // palms inward
+
+    try{
+        const L=found.left;
+        if(L.upperArm){ L.upperArm.rotation.z += zDown; L.upperArm.rotation.x += xForward; }
+        if(L.foreArm){ L.foreArm.rotation.z += zElbow; }
+        if(L.hand){ L.hand.rotation.y += yHandIn; }
+    }catch{}
+    try{
+        const R=found.right;
+        if(R.upperArm){ R.upperArm.rotation.z -= zDown; R.upperArm.rotation.x += xForward; }
+        if(R.foreArm){ R.foreArm.rotation.z -= zElbow; }
+        if(R.hand){ R.hand.rotation.y -= yHandIn; }
+    }catch{}
 }
 
 // --- AR Placement --- //
