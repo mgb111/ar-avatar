@@ -346,18 +346,47 @@ async function generateAndPlaySpeech(text){
             catch { detail = (await clone.text()).slice(0,200); }
             throw new Error(`TTS generation failed (${response.status}): ${detail}`);
         }
+        // Clean up any previous playback and nodes
+        try{ if(currentAudio){ currentAudio.pause(); currentAudio.src=''; } }catch{}
+        try{ if(audioSource){ audioSource.disconnect(); audioSource=null; } }catch{}
+        try{ if(analyser){ analyser.disconnect(); analyser=null; } }catch{}
+
         const blob=await response.blob();
         const audioUrl=URL.createObjectURL(blob);
-        const audio=new Audio(audioUrl); currentAudio=audio;
-        audio.crossOrigin="anonymous"; audio.loop=false;
+        const audio=new Audio();
+        audio.src = audioUrl;
+        audio.preload = 'auto';
+        audio.playsInline = true;
+        audio.loop=false;
+        currentAudio=audio;
 
+        // Build audio graph
+        if(audioContext.state==='suspended') { try{ await audioContext.resume(); }catch{} }
         audioSource=audioContext.createMediaElementSource(audio);
-        analyser=audioContext.createAnalyser(); audioSource.connect(analyser).connect(audioContext.destination);
-        analyser.fftSize=256; dataArray=new Uint8Array(analyser.frequencyBinCount);
+        analyser=audioContext.createAnalyser();
+        analyser.fftSize=128; // lighter processing to reduce glitches
+        dataArray=new Uint8Array(analyser.frequencyBinCount);
+        audioSource.connect(analyser).connect(audioContext.destination);
 
-        audio.play();
-        animateJawSync();
-        audio.onended=()=>{ isSpeaking=false; jawOpenMorphTargetIndex!==null && setJaw(0); };
+        const startPlayback = async ()=>{
+            try{
+                await audio.play();
+                animateJawSync();
+            }catch(e){ console.warn('Playback start failed, trying resume', e); try{ await audioContext.resume(); await audio.play(); }catch(err){ console.error(err); showStatusMessage('Audio playback blocked'); } }
+        };
+        if(audio.readyState>=3){
+            await startPlayback();
+        } else {
+            audio.addEventListener('canplaythrough', startPlayback, { once:true });
+        }
+
+        audio.onended=()=>{
+            isSpeaking=false;
+            jawOpenMorphTargetIndex!==null && setJaw(0);
+            try{ if(audioSource){ audioSource.disconnect(); audioSource=null; } }catch{}
+            try{ if(analyser){ analyser.disconnect(); analyser=null; } }catch{}
+            try{ URL.revokeObjectURL(audioUrl); }catch{}
+        };
     } catch(e){ console.error(e); showStatusMessage('Audio playback error'); isSpeaking=false; }
 }
 
