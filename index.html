@@ -120,6 +120,16 @@ const LIP_MESH_NAME = '';
 const LIP_MORPH_NAME = '';
 const LIP_BONE_NAME = '';
 
+// --- Lip-Sync Tuning (feel free to tweak quickly) ---
+// Higher gain => wider mouth. Maxed out for very wide motion.
+const MOUTH_BASE_GAIN = 28.0;
+// How snappy the movement is (0..1). Lower = more snap. Ultra-snappy.
+const MOUTH_SMOOTH = 0.02;
+// Random full-open spike probability per frame while speaking (more dramatic).
+const MOUTH_SPIKE_CHANCE = 0.18; // 18%
+// Max jaw open angle (bone rigs) in radians (negative rotates down on many rigs). Very wide.
+const LIP_BONE_MAX_OPEN = -1.8; // ~103°
+
 let camera, scene, renderer, controls, model, mixer, clock, jawOpenMorphTargetIndex = null, jawMesh = null, jawBone = null, jawBoneBaseX = 0, lastJaw=0;
 // Mouth pulsing state for more expressive movement
 let mouthPhase=0, mouthSpeed=0.8, mouthStrength=0.8, nextMouthChange=0;
@@ -419,7 +429,7 @@ function animateJawSync(){
     const avgAmplitude=dataArray.reduce((a,b)=>a+b,0)/dataArray.length/256;
 
     // Base derived from audio
-    let base = avgAmplitude*8.0; // strong base
+    let base = avgAmplitude*MOUTH_BASE_GAIN; // stronger base
     if(!isSpeaking){
         setJaw(base);
         return;
@@ -437,7 +447,7 @@ function animateJawSync(){
 
     // Occasionally force a full open/close frame for dramatic effect
     let spike = 0;
-    if(Math.random() < 0.025) spike = 1.0;
+    if(Math.random() < MOUTH_SPIKE_CHANCE) spike = 1.0;
 
     const combined = Math.max(base, pulse, spike);
     setJaw(Math.min(combined, 1));
@@ -449,7 +459,7 @@ function setJaw(value){
     // Non-linear boost to emphasize small amplitudes
     v = Math.sqrt(v);
     // Even faster response, minimal smoothing for snappier motion
-    v = lastJaw*0.15 + v*0.85;
+    v = lastJaw*(MOUTH_SMOOTH) + v*(1-MOUTH_SMOOTH);
     lastJaw = v;
     if(jawMesh && jawOpenMorphTargetIndex!==null && jawMesh.morphTargetInfluences){
         jawMesh.morphTargetInfluences[jawOpenMorphTargetIndex]=v;
@@ -458,7 +468,7 @@ function setJaw(value){
     // Fallback: rotate jaw bone around X if available
     if(jawBone){
         // Typical jaw open is rotation downwards (negative X in many rigs). Adjust factor as needed.
-        const maxOpen = -0.8; // ~46 degrees for more noticeable motion
+        const maxOpen = LIP_BONE_MAX_OPEN; // more noticeable motion
         jawBone.rotation.x = jawBoneBaseX + v * maxOpen;
         if(Math.abs(jawBone.rotation.x-jawBoneBaseX)<0.01){
             jawBone.rotation.y = jawBoneBaseX + v * maxOpen;
