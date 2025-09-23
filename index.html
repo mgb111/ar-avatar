@@ -46,6 +46,7 @@
     <div id="audio-status">Audio Context: Checking...</div>
     <div id="model-status">Model: Loading...</div>
     <div id="ar-status">AR Support: Checking...</div>
+    <div id="lip-status">Lip Sync: Detecting...</div>
     <button id="test-button">Test AI Response</button>
     <button id="reset-button">Reset Avatar</button>
 </div>
@@ -87,7 +88,7 @@ import { ARButton } from 'three/addons/webxr/ARButton.js';
 // Example: https://your-backend.example.com
 const BACKEND_URL = 'https://ar-avatar.vercel.app';
 
-let camera, scene, renderer, controls, model, mixer, clock, jawOpenMorphTargetIndex = null, jawMesh = null, jawBone = null, jawBoneBaseX = 0;
+let camera, scene, renderer, controls, model, mixer, clock, jawOpenMorphTargetIndex = null, jawMesh = null, jawBone = null, jawBoneBaseX = 0, lastJaw=0;
 let reticle, speechRecognition, isListening=false, isSpeaking=false, isAIThinking=false, currentAudio=null, audioContext, analyser, dataArray;
 let hitTestSource=null, hitTestSourceRequested=false, groundPlane=null;
 let isPlaced=false, allowReposition=false, longPressTimer=null, longPressStart={x:0,y:0};
@@ -113,6 +114,7 @@ const speechStatus=document.getElementById('speech-status');
 const audioStatus=document.getElementById('audio-status');
 const modelStatus=document.getElementById('model-status');
 const arStatus=document.getElementById('ar-status');
+const lipStatus=document.getElementById('lip-status');
 
 const defaultAvatarUrl='https://raw.githubusercontent.com/mgb111/ar-avatar/main/avatar.glb';
 const aiQueue=[];
@@ -410,11 +412,14 @@ function animateJawSync(){
     requestAnimationFrame(animateJawSync);
     analyser.getByteFrequencyData(dataArray);
     const avgAmplitude=dataArray.reduce((a,b)=>a+b,0)/dataArray.length/256;
-    setJaw(avgAmplitude*2.5); // slightly stronger movement for visibility
+    setJaw(avgAmplitude*3.5); // stronger movement for visibility
 }
 
 function setJaw(value){
-    const v = Math.min(Math.max(value,0),1);
+    // Smooth value to avoid jitter
+    let v = Math.min(Math.max(value,0),1);
+    v = lastJaw*0.6 + v*0.4; // smoothing
+    lastJaw = v;
     if(jawMesh && jawOpenMorphTargetIndex!==null && jawMesh.morphTargetInfluences){
         jawMesh.morphTargetInfluences[jawOpenMorphTargetIndex]=v;
         return;
@@ -433,7 +438,7 @@ function loadModel(url){
     loader.load(url, gltf=>{
         model=gltf.scene; scene.add(model); model.position.set(0,0,0); model.visible=true;
         // Find a suitable morph target for jaw/mouth opening on any mesh
-        const candidates=['jawOpen','JawOpen','mouthOpen','MouthOpen','viseme_aa','AA','Aa','a','openMouth'];
+        const candidates=['jawOpen','JawOpen','JAW_Open','MouthOpen','mouthOpen','openMouth','OpenMouth','viseme_aa','AA','Aa','a','A','viseme_A'];
         jawOpenMorphTargetIndex = null; jawMesh = null; jawBone = null; jawBoneBaseX = 0;
         model.traverse(child=>{
             if(jawOpenMorphTargetIndex!==null) return; // already found
@@ -464,6 +469,17 @@ function loadModel(url){
                     }
                 }
             });
+        }
+        // Update UI with detection result
+        if(jawMesh && jawOpenMorphTargetIndex!==null){
+            lipStatus.textContent = `Lip Sync: Morph '${Object.keys(jawMesh.morphTargetDictionary).find(k=>jawMesh.morphTargetDictionary[k]===jawOpenMorphTargetIndex)}' on '${jawMesh.name}'`;
+            lipStatus.style.color='#10b981';
+        } else if(jawBone){
+            lipStatus.textContent = `Lip Sync: Bone rotation '${jawBone.name}'`;
+            lipStatus.style.color='#10b981';
+        } else {
+            lipStatus.textContent = 'Lip Sync: Not found in model';
+            lipStatus.style.color='#ef4444';
         }
         loadingOverlay.style.display='none';
         modelStatus.textContent='Model: ✅ Loaded'; modelStatus.style.color='#10b981';
