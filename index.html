@@ -7,77 +7,6 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
     body { font-family: 'Inter', sans-serif; margin:0; overflow:hidden; background-color:#111827; color:#f3f4f6; }
-
-// --- Viseme Driving --- //
-function driveVisemesFromAudio(){
-    if(!visemeTargets.length) return;
-    // Compute rough band energies
-    const n = dataArray.length;
-    const lowEnd = Math.max(8, Math.floor(n*0.12));
-    const midEnd = Math.max(lowEnd+8, Math.floor(n*0.35));
-    let low=0, mid=0, high=0;
-    for(let i=0;i<lowEnd;i++) low+=dataArray[i];
-    for(let i=lowEnd;i<midEnd;i++) mid+=dataArray[i];
-    for(let i=midEnd;i<n;i++) high+=dataArray[i];
-    low/= (lowEnd*255); mid/= ((midEnd-lowEnd)*255); high/= ((n-midEnd)*255);
-
-    // Emphasize dynamics
-    low = Math.min(1, Math.sqrt(low)*1.2);
-    mid = Math.min(1, Math.sqrt(mid)*1.2);
-    high= Math.min(1, Math.sqrt(high)*1.2);
-
-    // Build desired viseme weights (0..1). We’ll normalize softly.
-    const weights = {};
-    // Open mouth shapes from low band
-    weights['aa'] = low;
-    weights['ah'] = low*0.9;
-    weights['open'] = low;
-    // Round shapes from low-mid
-    const round = Math.max(low*0.7, mid*0.5);
-    weights['oh'] = round;
-    weights['oo'] = round;
-    weights['w'] = round*0.8;
-    weights['o'] = round;
-    // Spread shapes from mid-high
-    const spread = Math.max(mid, high*0.6);
-    weights['ee'] = spread;
-    weights['ih'] = spread*0.8;
-    // Teeth/lip press from high band
-    weights['fv'] = high;
-    weights['mbp'] = high*0.7;
-
-    applyVisemeWeights(weights);
-}
-
-function applyVisemeWeights(weights){
-    // Prepare map by mesh to avoid repeated lookups
-    const byMesh = new Map();
-    for(const t of visemeTargets){
-        if(!byMesh.has(t.mesh)) byMesh.set(t.mesh, []);
-        byMesh.get(t.mesh).push(t);
-    }
-    // For each mesh, zero all matched viseme morphs first for clean blending
-    for(const [mesh, targets] of byMesh){
-        if(!mesh.morphTargetInfluences) continue;
-        for(const t of targets){ mesh.morphTargetInfluences[t.index] = 0; }
-    }
-    // Apply based on best name match per target
-    for(const [mesh, targets] of byMesh){
-        if(!mesh.morphTargetInfluences) continue;
-        for(const t of targets){
-            const k = t.name.toLowerCase();
-            // Find a weight key that best matches this morph name
-            let w = 0;
-            if(k.includes('aa') || k.includes('ah') || k.includes('open')) w = Math.max(weights['aa']||0, weights['ah']||0, weights['open']||0);
-            else if(k.includes('oh') || k.includes('oo') || k==='o' || k.includes('round')) w = Math.max(weights['oh']||0, weights['oo']||0, weights['o']||0);
-            else if(k.includes('ee') || k.includes('ih') || k.includes('spread')) w = Math.max(weights['ee']||0, weights['ih']||0);
-            else if(k.includes('fv') || k.includes('teeth') || k.includes('lip') || k.includes('mbp')) w = Math.max(weights['fv']||0, weights['mbp']||0);
-            // If none matched, give a tiny value based on low for subtle motion
-            else w = (weights['open']||0)*0.2;
-            mesh.morphTargetInfluences[t.index] = Math.min(1, w);
-        }
-    }
-}
     canvas { display:block; width:100%; height:100%; }
     #ar-button-container { position:absolute; top:0; left:0; right:0; bottom:0; display:flex; justify-content:center; align-items:center; z-index:20; }
     #ar-button { background-color: rgba(31,41,55,0.8); color:white; padding:1rem 2rem; font-size:1.25rem; border-radius:9999px; border:1px solid rgba(75,85,99,0.8); cursor:pointer; font-weight:600; box-shadow:0 4px 6px rgba(0,0,0,0.1); transition: all 0.2s; }
@@ -277,6 +206,10 @@ function init(){
     renderer.domElement.addEventListener('touchend',onTouchEnd);
 
     renderer.setAnimationLoop(animate);
+    // Start jaw animation loop even without audio so mouth moves anyhow if forced
+    if(FORCE_MOVEMENT_ALWAYS){
+        try{ animateJawSync(); }catch{}
+    }
 }
 
 // --- Functions --- //
@@ -286,6 +219,76 @@ function showStatusMessage(message,isError=true){
     statusMessage.style.backgroundColor=isError?'rgba(239,68,68,0.8)':'rgba(34,197,94,0.8)';
     statusMessage.style.display='block';
     setTimeout(()=>{statusMessage.style.display='none';},5000);
+}
+
+// --- Viseme Driving --- //
+function driveVisemesFromAudio(){
+    if(!visemeTargets.length || !dataArray) return;
+    // Compute rough band energies
+    const n = dataArray.length;
+    if(!n) return;
+    const lowEnd = Math.max(8, Math.floor(n*0.12));
+    const midEnd = Math.max(lowEnd+8, Math.floor(n*0.35));
+    let low=0, mid=0, high=0;
+    for(let i=0;i<lowEnd;i++) low+=dataArray[i];
+    for(let i=lowEnd;i<midEnd;i++) mid+=dataArray[i];
+    for(let i=midEnd;i<n;i++) high+=dataArray[i];
+    low/= (lowEnd*255); mid/= ((midEnd-lowEnd)*255); high/= ((n-midEnd)*255);
+
+    // Emphasize dynamics
+    low = Math.min(1, Math.sqrt(low)*1.2);
+    mid = Math.min(1, Math.sqrt(mid)*1.2);
+    high= Math.min(1, Math.sqrt(high)*1.2);
+
+    // Build desired viseme weights (0..1)
+    const weights = {};
+    // Open mouth shapes from low band
+    weights['aa'] = low;
+    weights['ah'] = low*0.9;
+    weights['open'] = low;
+    // Round shapes from low-mid
+    const round = Math.max(low*0.7, mid*0.5);
+    weights['oh'] = round;
+    weights['oo'] = round;
+    weights['w'] = round*0.8;
+    weights['o'] = round;
+    // Spread shapes from mid-high
+    const spread = Math.max(mid, high*0.6);
+    weights['ee'] = spread;
+    weights['ih'] = spread*0.8;
+    // Teeth/lip press from high band
+    weights['fv'] = high;
+    weights['mbp'] = high*0.7;
+
+    applyVisemeWeights(weights);
+}
+
+function applyVisemeWeights(weights){
+    // Prepare map by mesh to avoid repeated lookups
+    const byMesh = new Map();
+    for(const t of visemeTargets){
+        if(!byMesh.has(t.mesh)) byMesh.set(t.mesh, []);
+        byMesh.get(t.mesh).push(t);
+    }
+    // For each mesh, zero all matched viseme morphs first for clean blending
+    for(const [mesh, targets] of byMesh){
+        if(!mesh.morphTargetInfluences) continue;
+        for(const t of targets){ mesh.morphTargetInfluences[t.index] = 0; }
+    }
+    // Apply based on best name match per target
+    for(const [mesh, targets] of byMesh){
+        if(!mesh.morphTargetInfluences) continue;
+        for(const t of targets){
+            const k = t.name.toLowerCase();
+            let w = 0;
+            if(k.includes('aa') || k.includes('ah') || k.includes('open')) w = Math.max(weights['aa']||0, weights['ah']||0, weights['open']||0);
+            else if(k.includes('oh') || k.includes('oo') || k==='o' || k.includes('round')) w = Math.max(weights['oh']||0, weights['oo']||0, weights['o']||0);
+            else if(k.includes('ee') || k.includes('ih') || k.includes('spread')) w = Math.max(weights['ee']||0, weights['ih']||0);
+            else if(k.includes('fv') || k.includes('teeth') || k.includes('lip') || k.includes('mbp')) w = Math.max(weights['fv']||0, weights['mbp']||0);
+            else w = (weights['open']||0)*0.2;
+            mesh.morphTargetInfluences[t.index] = Math.min(1, w);
+        }
+    }
 }
 
 // --- AR Button --- //
@@ -495,10 +498,17 @@ async function generateAndPlaySpeech(text){
 
 // --- Jaw Lip-Sync --- //
 function animateJawSync(){
-    if(!analyser || !model) return;
+    if(!model) return;
     requestAnimationFrame(animateJawSync);
-    analyser.getByteFrequencyData(dataArray);
-    const avgAmplitude=dataArray.reduce((a,b)=>a+b,0)/dataArray.length/256;
+    let avgAmplitude = 0;
+    if(analyser && dataArray){
+        analyser.getByteFrequencyData(dataArray);
+        avgAmplitude = dataArray.reduce((a,b)=>a+b,0)/(dataArray.length||1)/256;
+    } else {
+        // No audio: synthesize a base using time to ensure movement
+        const t = performance.now()*0.002;
+        avgAmplitude = (Math.sin(t)*0.5+0.5)*0.5; // 0..0.5
+    }
 
     // Base derived from audio
     let base = avgAmplitude*MOUTH_BASE_GAIN; // massive base
