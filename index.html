@@ -82,6 +82,9 @@
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import MeshoptDecoder from 'three/addons/libs/meshopt_decoder.module.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ARButton } from 'three/addons/webxr/ARButton.js';
 
@@ -118,7 +121,7 @@ const modelStatus=document.getElementById('model-status');
 const arStatus=document.getElementById('ar-status');
 const lipStatus=document.getElementById('lip-status');
 
-const defaultAvatarUrl='https://raw.githubusercontent.com/mgb111/ar-avatar/main/avatar.glb';
+const defaultAvatarUrl='./avatar.glb';
 const aiQueue=[];
 
 init();
@@ -166,7 +169,8 @@ function init(){
     controls.target.set(0,1,0);
     controls.update();
 
-    loadModel(defaultAvatarUrl);
+    // Cache-bust to ensure latest local avatar.glb is loaded when replaced with same name
+    loadModel(`${defaultAvatarUrl}?v=${Date.now()}`);
     setupSpeechRecognition();
     setupAR();
 
@@ -449,8 +453,40 @@ function setJaw(value){
 // --- Model Loading --- //
 function loadModel(url){
     const loader=new GLTFLoader();
+    // Enable Draco decoding for compressed models
+    try{
+        const dracoLoader = new DRACOLoader();
+        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
+        loader.setDRACOLoader(dracoLoader);
+    }catch(e){ console.warn('DRACO not available', e); }
+    // Enable KTX2 (BasisU) compressed textures
+    try{
+        const ktx2 = new KTX2Loader();
+        ktx2.setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/');
+        ktx2.detectSupport(renderer);
+        loader.setKTX2Loader(ktx2);
+    }catch(e){ console.warn('KTX2 not available', e); }
+    // Enable Meshopt decoding
+    try{ loader.setMeshoptDecoder(MeshoptDecoder); }catch(e){ console.warn('Meshopt not available', e); }
     loader.load(url, gltf=>{
-        model=gltf.scene; scene.add(model); model.position.set(0,0,0); model.visible=true;
+        model=gltf.scene;
+        // Normalize: center, lift to ground, scale to approx human height for visibility
+        const box = new THREE.Box3().setFromObject(model);
+        const size = new THREE.Vector3(); box.getSize(size);
+        const center = new THREE.Vector3(); box.getCenter(center);
+        const targetHeight = 1.7; // meters
+        let scaleFactor = 1;
+        if(size.y>0){ scaleFactor = targetHeight / size.y; }
+        model.scale.multiplyScalar(scaleFactor);
+        model.position.sub(center.multiplyScalar(scaleFactor)); // center to origin
+        // Recompute box after scaling, then lift to y=0
+        const box2 = new THREE.Box3().setFromObject(model);
+        const minY = box2.min.y;
+        if(isFinite(minY)) model.position.y -= minY;
+
+        scene.add(model);
+        model.visible=true;
+        model.traverse(n=>{ if(n.isMesh){ n.frustumCulled=false; n.castShadow=false; n.receiveShadow=false; }});
         // Find a suitable morph target for jaw/mouth opening on any mesh
         const candidates=['jawOpen','JawOpen','JAW_Open','MouthOpen','mouthOpen','openMouth','OpenMouth','viseme_aa','AA','Aa','a','A','viseme_A'];
         jawOpenMorphTargetIndex = null; jawMesh = null; jawBone = null; jawBoneBaseX = 0;
@@ -504,7 +540,7 @@ function loadModel(url){
         }
         loadingOverlay.style.display='none';
         modelStatus.textContent='Model: ✅ Loaded'; modelStatus.style.color='#10b981';
-    },xhr=>{},err=>{ console.error(err); loadingOverlay.style.display='none'; showStatusMessage('Failed to load 3D model'); });
+    },xhr=>{},err=>{ console.error('GLTF load error:', err); loadingOverlay.style.display='none'; showStatusMessage(`Failed to load 3D model: ${err?.message||'Unknown error'}`); });
 }
 
 // --- AR Placement --- //
