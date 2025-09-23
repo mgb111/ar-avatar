@@ -103,7 +103,7 @@ init();
 
 function init(){
     // Backend URL check (silent)
-    if(!BACKEND_URL){ console.warn('Missing BACKEND_URL'); }
+    if(!BACKEND_URL){ /* no-op */ }
 
     scene=new THREE.Scene();
     clock=new THREE.Clock();
@@ -111,7 +111,7 @@ function init(){
     camera.position.set(0,1.6,2.5);
 
     // Audio context
-    try{ audioContext=new (window.AudioContext||window.webkitAudioContext)(); } catch(e){ console.error('AudioContext not supported'); }
+    try{ audioContext=new (window.AudioContext||window.webkitAudioContext)(); } catch(e){ /* no-op */ }
 
     // WebXR Support
     if('xr' in navigator){ navigator.xr.isSessionSupported('immersive-ar').then(()=>{}); }
@@ -407,7 +407,6 @@ function loadModel(url){
             if(!child.isMesh || !child.morphTargetDictionary) return;
             const dict = child.morphTargetDictionary;
             const meshName = (child.name||'').toLowerCase();
-            try{ console.debug('Morph targets on', child.name, Object.keys(dict)); }catch{}
             for(const [key, idx] of Object.entries(dict)){
                 const k = key.toLowerCase();
                 // Base score from morph name
@@ -433,7 +432,7 @@ function loadModel(url){
                     if(n.includes('jaw') || n.includes('chin') || (n.includes('mouth') && !n.includes('upper'))){
                         jawBone = child;
                         jawBoneBaseX = child.rotation.x;
-                        try{ console.debug('Found jaw-like bone:', child.name); }catch{}
+                        
                     }
                 }
             });
@@ -441,8 +440,7 @@ function loadModel(url){
 
         // no lip sync UI
         loadingOverlay.style.display='none';
-        modelStatus.textContent='Model: ✅ Loaded'; modelStatus.style.color='#10b981';
-    },xhr=>{},err=>{ console.error(err); loadingOverlay.style.display='none'; showStatusMessage('Failed to load 3D model'); });
+    },xhr=>{},err=>{ loadingOverlay.style.display='none'; showStatusMessage('Failed to load 3D model'); });
 }
 
 // --- AR Placement --- //
