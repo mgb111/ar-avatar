@@ -136,6 +136,8 @@ let camera, scene, renderer, controls, model, mixer, clock, jawOpenMorphTargetIn
 let visemeTargets = [];
 // Mouth pulsing state for more expressive movement
 let mouthPhase=0, mouthSpeed=0.8, mouthStrength=0.8, nextMouthChange=0;
+// Deterministic open/close toggle while speaking (every 500ms)
+let mouthToggleOpen=false, lastMouthToggle=0;
 let reticle, speechRecognition, isListening=false, isSpeaking=false, isAIThinking=false, currentAudio=null, audioContext, analyser, dataArray;
 let hitTestSource=null, hitTestSourceRequested=false, groundPlane=null;
 let isPlaced=false, allowReposition=false, longPressTimer=null, longPressStart={x:0,y:0};
@@ -513,19 +515,6 @@ async function generateAndPlaySpeech(text){
 function animateJawSync(){
     if(!model) return;
     requestAnimationFrame(animateJawSync);
-    let avgAmplitude = 0;
-    if(analyser && dataArray){
-        analyser.getByteFrequencyData(dataArray);
-        avgAmplitude = dataArray.reduce((a,b)=>a+b,0)/(dataArray.length||1)/256;
-    } else {
-        // No audio: synthesize a base using time to ensure movement
-        const t = performance.now()*0.002;
-        avgAmplitude = (Math.sin(t)*0.5+0.5)*0.5; // 0..0.5
-    }
-
-    // Base derived from audio
-    let base = avgAmplitude*MOUTH_BASE_GAIN; // massive base
-    
     // When not speaking, keep mouth closed
     if(!isSpeaking){
         setJaw(0);
@@ -533,25 +522,14 @@ function animateJawSync(){
         return;
     }
 
-    // Randomized pulsing while speaking to create visible open/close cycles
+    // Deterministic 500ms toggle while speaking
     const now = performance.now();
-    if(now > nextMouthChange){
-        mouthSpeed = 0.6 + Math.random()*1.2;       // 0.6..1.8
-        mouthStrength = 0.6 + Math.random()*0.6;    // 0.6..1.2
-        nextMouthChange = now + 250 + Math.random()*550; // change every 250-800ms
+    if(now - lastMouthToggle >= 500){
+        mouthToggleOpen = !mouthToggleOpen;
+        lastMouthToggle = now;
     }
-    mouthPhase += mouthSpeed*0.25; // advance phase
-    const pulse = Math.pow(Math.abs(Math.sin(mouthPhase)), 0.55) * mouthStrength; // sharper, more time at extremes
-
-    // Occasionally force a full open/close frame for dramatic effect
-    let spike = 0;
-    if(Math.random() < MOUTH_SPIKE_CHANCE) spike = 1.0;
-
-    const combined = Math.max(base, pulse, spike);
-    const jawV = Math.min(combined, 1);
-    setJaw(jawV);
-
-    // Drive mouth shapes (visemes) only when speaking and audio is present
+    setJaw(mouthToggleOpen ? 1 : 0);
+    // Optionally drive visemes if analyser present (does not affect jaw toggle)
     if(analyser && dataArray) driveVisemesFromAudio();
 }
 
