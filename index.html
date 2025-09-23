@@ -14,8 +14,7 @@
     #loading-overlay, #ar-instructions { position:absolute; top:0; left:0; width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:100; color:#d1d5db; font-size:1.125rem; background-color: rgba(17,24,39,0.9); text-align:center; padding:1rem; }
     #ar-instructions { display:none; }
     #status-message { position:absolute; top:2rem; left:50%; transform:translateX(-50%); background-color: rgba(239,68,68,0.8); color:white; padding:0.5rem 1rem; border-radius:0.5rem; z-index:110; font-size:0.875rem; display:none; text-align:center; }
-    #debug-panel { position:absolute; top:1rem; right:1rem; background-color: rgba(0,0,0,0.8); color:white; padding:1rem; border-radius:0.5rem; font-size:0.75rem; z-index:120; max-width:300px; }
-    #test-button, #reset-button, #lip-test-button { background-color:#10b981; color:white; padding:0.5rem 1rem; border-radius:0.5rem; border:none; cursor:pointer; margin-top:0.5rem; }
+    /* debug panel removed */
     .loader, .thinking-loader { border:4px solid #4b5563; border-top:4px solid #60a5fa; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; }
     .loader { margin-bottom:1rem; }
     @keyframes spin { 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
@@ -38,19 +37,6 @@
 </div>
 
 <div id="status-message"></div>
-
-<div id="debug-panel">
-    <div><strong>Debug Info:</strong></div>
-    <div id="api-key-status">API Key: Checking...</div>
-    <div id="speech-status">Speech Recognition: Checking...</div>
-    <div id="audio-status">Audio Context: Checking...</div>
-    <div id="model-status">Model: Loading...</div>
-    <div id="ar-status">AR Support: Checking...</div>
-    <div id="lip-status">Lip Sync: Detecting...</div>
-    <button id="test-button">Test AI Response</button>
-    <button id="lip-test-button">Test Lips</button>
-    <button id="reset-button">Reset Avatar</button>
-</div>
 
 <div id="ar-button-container">
     <button id="ar-button-placeholder">Enter Augmented Reality</button>
@@ -82,9 +68,6 @@
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
-import MeshoptDecoder from 'three/addons/libs/meshopt_decoder.module.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ARButton } from 'three/addons/webxr/ARButton.js';
 
@@ -107,31 +90,20 @@ const arControlsContainer=document.getElementById('ar-controls-container');
 const micButton=document.getElementById('mic-button');
 const micIcon=document.getElementById('mic-icon');
 const thinkingIcon=document.getElementById('thinking-icon');
-const testButton=document.getElementById('test-button');
-const lipTestButton=document.getElementById('lip-test-button');
-const resetButton=document.getElementById('reset-button');
 const micLevelFill=document.getElementById('mic-level-fill');
 const textInput=document.getElementById('text-input');
 const sendButton=document.getElementById('send-button');
 
-const apiKeyStatus=document.getElementById('api-key-status');
-const speechStatus=document.getElementById('speech-status');
-const audioStatus=document.getElementById('audio-status');
-const modelStatus=document.getElementById('model-status');
-const arStatus=document.getElementById('ar-status');
-const lipStatus=document.getElementById('lip-status');
+// debug elements removed
 
-const defaultAvatarUrl='./avatar.glb';
+const defaultAvatarUrl='https://raw.githubusercontent.com/mgb111/ar-avatar/main/avatar.glb';
 const aiQueue=[];
 
 init();
 
 function init(){
-    // Backend URL check
-    if(!BACKEND_URL){
-        apiKeyStatus.textContent='Backend: ❌ Missing BACKEND_URL';
-        apiKeyStatus.style.color='#ef4444';
-    } else { apiKeyStatus.textContent='Backend: ✅ Connected (proxy)'; apiKeyStatus.style.color='#10b981'; }
+    // Backend URL check (silent)
+    if(!BACKEND_URL){ console.warn('Missing BACKEND_URL'); }
 
     scene=new THREE.Scene();
     clock=new THREE.Clock();
@@ -139,22 +111,10 @@ function init(){
     camera.position.set(0,1.6,2.5);
 
     // Audio context
-    try{ 
-        audioContext=new (window.AudioContext||window.webkitAudioContext)();
-        audioStatus.textContent='Audio Context: ✅ Supported';
-        audioStatus.style.color='#10b981';
-    } catch(e){
-        audioStatus.textContent='Audio Context: ❌ Not Supported';
-        audioStatus.style.color='#ef4444';
-    }
+    try{ audioContext=new (window.AudioContext||window.webkitAudioContext)(); } catch(e){ console.error('AudioContext not supported'); }
 
     // WebXR Support
-    if('xr' in navigator){
-        navigator.xr.isSessionSupported('immersive-ar').then(supported=>{
-            if(supported){ arStatus.textContent='AR Support: ✅ Supported'; arStatus.style.color='#10b981'; }
-            else{ arStatus.textContent='AR Support: ❌ Not Supported'; arStatus.style.color='#ef4444'; }
-        });
-    } else { arStatus.textContent='AR Support: ❌ WebXR Not Available'; arStatus.style.color='#ef4444'; }
+    if('xr' in navigator){ navigator.xr.isSessionSupported('immersive-ar').then(()=>{}); }
 
     const ambientLight=new THREE.AmbientLight(0xffffff,1.5); scene.add(ambientLight);
     const directionalLight=new THREE.DirectionalLight(0xffffff,2.5); directionalLight.position.set(1,1,1); scene.add(directionalLight);
@@ -169,21 +129,11 @@ function init(){
     controls.target.set(0,1,0);
     controls.update();
 
-    // Cache-bust to ensure latest local avatar.glb is loaded when replaced with same name
-    loadModel(`${defaultAvatarUrl}?v=${Date.now()}`);
+    loadModel(defaultAvatarUrl);
     setupSpeechRecognition();
     setupAR();
 
     micButton.addEventListener('click',toggleListening);
-    testButton.addEventListener('click',()=>queueAI("Hello, can you introduce yourself?"));
-    lipTestButton.addEventListener('click',()=>{
-        // Force mouth open briefly for diagnostics
-        let t=0;
-        const interval=setInterval(()=>{
-            t+=0.1; setJaw(Math.min(t,1)); if(t>=1){ clearInterval(interval); setTimeout(()=>setJaw(0),500); }
-        },50);
-    });
-    resetButton.addEventListener('click',resetAvatar);
     if(sendButton){
         const sendText=()=>{ const v=textInput?.value?.trim(); if(!v||isSpeaking||isAIThinking) return; queueAI(v); textInput.value=''; };
         sendButton.addEventListener('click',sendText);
@@ -258,23 +208,18 @@ function setupSpeechRecognition(){
             let interim=''; let final='';
             for(let i=event.resultIndex;i<event.results.length;i++){
                 const res=event.results[i];
-                if(res.isFinal) final += res[0].transcript;
-                else interim += res[0].transcript;
+                if(res.isFinal) queueAI(res[0].transcript.trim());
             }
-            if(interim){ speechStatus.textContent=`Speech Recognition: 📝 ${interim}`; speechStatus.style.color='#10b981'; }
-            if(final){ queueAI(final.trim()); }
         };
-        speechRecognition.onstart=()=>{ isListening=true; speechStatus.textContent='Speech Recognition: 🎤 Listening'; speechStatus.style.color='#10b981'; micButton.classList.add('bg-red-600','hover:bg-red-700'); micButton.classList.remove('bg-blue-600','hover:bg-blue-700'); };
-        speechRecognition.onend=()=>{ isListening=false; speechStatus.textContent='Speech Recognition: ⏹️ Stopped'; speechStatus.style.color='#d1d5db'; micButton.classList.remove('bg-red-600','hover:bg-red-700'); micButton.classList.add('bg-blue-600','hover:bg-blue-700'); };
-        speechRecognition.onaudiostart=()=>{ speechStatus.textContent='Speech Recognition: 🎧 Audio detected'; speechStatus.style.color='#10b981'; };
+        speechRecognition.onstart=()=>{ isListening=true; micButton.classList.add('bg-red-600','hover:bg-red-700'); micButton.classList.remove('bg-blue-600','hover:bg-blue-700'); };
+        speechRecognition.onend=()=>{ isListening=false; micButton.classList.remove('bg-red-600','hover:bg-red-700'); micButton.classList.add('bg-blue-600','hover:bg-blue-700'); };
+        speechRecognition.onaudiostart=()=>{};
         speechRecognition.onaudioend=()=>{ /* often fires quickly on Android */ };
-        speechRecognition.onspeechstart=()=>{ speechStatus.textContent='Speech Recognition: 🗣️ Speech detected'; speechStatus.style.color='#10b981'; };
+        speechRecognition.onspeechstart=()=>{};
         speechRecognition.onspeechend=()=>{ /* recognition will finalize shortly */ };
         // Single auto-retry on no match (some Android builds require a quick restart)
         let didRetryNoMatch=false;
         speechRecognition.onnomatch=()=>{
-            speechStatus.textContent='Speech Recognition: 🤔 No match';
-            speechStatus.style.color='#fbbf24';
             if(!didRetryNoMatch){
                 didRetryNoMatch=true;
                 try{ speechRecognition.abort(); }catch{}
@@ -288,8 +233,6 @@ function setupSpeechRecognition(){
             if(event.error==='not-allowed' || event.error==='denied') hint='Please allow microphone access in your browser settings.';
             if(event.error==='no-speech') hint='No speech detected. Try speaking closer to the mic.';
             if(event.error==='aborted') hint='Recognition aborted. Tap the mic again.';
-            speechStatus.textContent=`Speech Recognition: ❌ ${event.error}`;
-            speechStatus.style.color='#ef4444';
             showStatusMessage(`Microphone error: ${event.error}. ${hint}`);
         };
         // Reset retry flag when session ends
@@ -297,12 +240,13 @@ function setupSpeechRecognition(){
             const origEnd = speechRecognition.onend;
             return ()=>{
                 didRetryNoMatch=false;
-                isListening=false; speechStatus.textContent='Speech Recognition: ⏹️ Stopped'; speechStatus.style.color='#d1d5db'; micButton.classList.remove('bg-red-600','hover:bg-red-700'); micButton.classList.add('bg-blue-600','hover:bg-blue-700');
+                isListening=false; micButton.classList.remove('bg-red-600','hover:bg-red-700'); micButton.classList.add('bg-blue-600','hover:bg-blue-700');
                 if(typeof origEnd==='function') origEnd();
             };
         })();
-        speechStatus.textContent='Speech Recognition: ✅ Supported'; speechStatus.style.color='#10b981';
-    } else { speechStatus.textContent='Speech Recognition: ❌ Not Supported'; speechStatus.style.color='#ef4444'; micButton.disabled=true; showStatusMessage('Voice input not supported',false); }
+    } else { 
+        micButton.disabled=true; showStatusMessage('Voice input not supported',false); 
+    }
 }
 
 function toggleListening(){
@@ -453,40 +397,8 @@ function setJaw(value){
 // --- Model Loading --- //
 function loadModel(url){
     const loader=new GLTFLoader();
-    // Enable Draco decoding for compressed models
-    try{
-        const dracoLoader = new DRACOLoader();
-        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
-        loader.setDRACOLoader(dracoLoader);
-    }catch(e){ console.warn('DRACO not available', e); }
-    // Enable KTX2 (BasisU) compressed textures
-    try{
-        const ktx2 = new KTX2Loader();
-        ktx2.setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/');
-        ktx2.detectSupport(renderer);
-        loader.setKTX2Loader(ktx2);
-    }catch(e){ console.warn('KTX2 not available', e); }
-    // Enable Meshopt decoding
-    try{ loader.setMeshoptDecoder(MeshoptDecoder); }catch(e){ console.warn('Meshopt not available', e); }
     loader.load(url, gltf=>{
-        model=gltf.scene;
-        // Normalize: center, lift to ground, scale to approx human height for visibility
-        const box = new THREE.Box3().setFromObject(model);
-        const size = new THREE.Vector3(); box.getSize(size);
-        const center = new THREE.Vector3(); box.getCenter(center);
-        const targetHeight = 1.7; // meters
-        let scaleFactor = 1;
-        if(size.y>0){ scaleFactor = targetHeight / size.y; }
-        model.scale.multiplyScalar(scaleFactor);
-        model.position.sub(center.multiplyScalar(scaleFactor)); // center to origin
-        // Recompute box after scaling, then lift to y=0
-        const box2 = new THREE.Box3().setFromObject(model);
-        const minY = box2.min.y;
-        if(isFinite(minY)) model.position.y -= minY;
-
-        scene.add(model);
-        model.visible=true;
-        model.traverse(n=>{ if(n.isMesh){ n.frustumCulled=false; n.castShadow=false; n.receiveShadow=false; }});
+        model=gltf.scene; scene.add(model); model.position.set(0,0,0); model.visible=true;
         // Find a suitable morph target for jaw/mouth opening on any mesh
         const candidates=['jawOpen','JawOpen','JAW_Open','MouthOpen','mouthOpen','openMouth','OpenMouth','viseme_aa','AA','Aa','a','A','viseme_A'];
         jawOpenMorphTargetIndex = null; jawMesh = null; jawBone = null; jawBoneBaseX = 0;
@@ -527,20 +439,10 @@ function loadModel(url){
             });
         }
 
-        // Update UI with detection result
-        if(jawMesh && jawOpenMorphTargetIndex!==null){
-            lipStatus.textContent = `Lip Sync: Morph '${Object.keys(jawMesh.morphTargetDictionary).find(k=>jawMesh.morphTargetDictionary[k]===jawOpenMorphTargetIndex)}' on '${jawMesh.name}'`;
-            lipStatus.style.color='#10b981';
-        } else if(jawBone){
-            lipStatus.textContent = `Lip Sync: Bone rotation '${jawBone.name}'`;
-            lipStatus.style.color='#10b981';
-        } else {
-            lipStatus.textContent = 'Lip Sync: Not found in model';
-            lipStatus.style.color='#ef4444';
-        }
+        // no lip sync UI
         loadingOverlay.style.display='none';
         modelStatus.textContent='Model: ✅ Loaded'; modelStatus.style.color='#10b981';
-    },xhr=>{},err=>{ console.error('GLTF load error:', err); loadingOverlay.style.display='none'; showStatusMessage(`Failed to load 3D model: ${err?.message||'Unknown error'}`); });
+    },xhr=>{},err=>{ console.error(err); loadingOverlay.style.display='none'; showStatusMessage('Failed to load 3D model'); });
 }
 
 // --- AR Placement --- //
