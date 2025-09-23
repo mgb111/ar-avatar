@@ -121,14 +121,13 @@ const LIP_MORPH_NAME = '';
 const LIP_BONE_NAME = '';
 
 // --- Lip-Sync Tuning (feel free to tweak quickly) ---
-// Higher gain => wider mouth. Maxed out for very wide motion.
-const MOUTH_BASE_GAIN = 28.0;
-// How snappy the movement is (0..1). Lower = more snap. Ultra-snappy.
-const MOUTH_SMOOTH = 0.02;
-// Random full-open spike probability per frame while speaking (more dramatic).
-const MOUTH_SPIKE_CHANCE = 0.18; // 18%
-// Max jaw open angle (bone rigs) in radians (negative rotates down on many rigs). Very wide.
-const LIP_BONE_MAX_OPEN = -1.8; // ~103°
+// EXTREME settings to force visible lip movement
+const MOUTH_BASE_GAIN = 40.0; // massive gain
+const MOUTH_SMOOTH = 0.01; // instant response
+const MOUTH_SPIKE_CHANCE = 0.35; // constant spikes
+const LIP_BONE_MAX_OPEN = -2.5; // extreme jaw rotation
+// Force movement even when not speaking
+const FORCE_MOVEMENT_ALWAYS = true;
 
 let camera, scene, renderer, controls, model, mixer, clock, jawOpenMorphTargetIndex = null, jawMesh = null, jawBone = null, jawBoneBaseX = 0, lastJaw=0;
 // Mouth pulsing state for more expressive movement
@@ -429,9 +428,18 @@ function animateJawSync(){
     const avgAmplitude=dataArray.reduce((a,b)=>a+b,0)/dataArray.length/256;
 
     // Base derived from audio
-    let base = avgAmplitude*MOUTH_BASE_GAIN; // stronger base
-    if(!isSpeaking){
+    let base = avgAmplitude*MOUTH_BASE_GAIN; // massive base
+    
+    // Force movement even when not speaking for testing
+    if(!isSpeaking && !FORCE_MOVEMENT_ALWAYS){
         setJaw(base);
+        return;
+    }
+    
+    // Add constant pulsing when not speaking for visibility
+    if(!isSpeaking && FORCE_MOVEMENT_ALWAYS){
+        const testPulse = Math.abs(Math.sin(performance.now() * 0.01)) * 0.8;
+        setJaw(Math.max(base, testPulse));
         return;
     }
 
@@ -551,13 +559,30 @@ function loadModel(url){
             });
         }
 
-        // Ultimate fallback: pick first mesh with any morphs
-        if(!jawMesh && jawOpenMorphTargetIndex===null){
+        // Ultimate fallback: pick first mesh with any morphs and force it to work
+        if(!jawMesh && jawOpenMorphTargetIndex===null && !jawBone){
             model.traverse(child=>{
                 if(jawMesh) return;
                 if(child.isMesh && child.morphTargetDictionary){
-                    const firstKey = Object.keys(child.morphTargetDictionary)[0];
-                    if(firstKey!==undefined){ jawMesh=child; jawOpenMorphTargetIndex=child.morphTargetDictionary[firstKey]; }
+                    const keys = Object.keys(child.morphTargetDictionary);
+                    if(keys.length > 0){ 
+                        jawMesh=child; 
+                        jawOpenMorphTargetIndex=child.morphTargetDictionary[keys[0]]; 
+                        console.log('FORCING morph:', keys[0], 'on mesh:', child.name);
+                    }
+                }
+            });
+        }
+        
+        // Absolute last resort: pick any bone and animate it
+        if(!jawMesh && jawOpenMorphTargetIndex===null && !jawBone){
+            model.traverse(child=>{
+                if(jawBone) return;
+                if(child.isBone && child.name){
+                    jawBone = child;
+                    jawBoneBaseX = child.rotation.x;
+                    console.log('FORCING bone:', child.name);
+                    return;
                 }
             });
         }
