@@ -477,26 +477,59 @@ function putArmsDown(){
         }
     });
 
-    // Apply a natural pose:
-    // - Upper arms down along sides (~85 deg from T) with slight forward tilt
-    // - Forearms slightly bent (~15 deg)
-    // - Hands/palms slightly inward
-    const zDown=1.5; // ~86 degrees
-    const xForward=0.10; // slight forward tilt
-    const zElbow=0.25; // slight elbow bend
-    const yHandIn=0.30; // palms inward
+    // Apply a natural relaxed pose:
+    // - Shoulders neutral with slight depression
+    // - Upper arms down along sides with a hint of adduction and forward tilt
+    // - Elbows slightly bent
+    // - Forearms gently following body line (slight inward yaw)
+    // - Wrists relaxed (slight flexion and ulnar deviation), palms inward
+    // - Fingers slightly curled if finger bones exist
+    const zDown=1.45;     // ~83° down from T-pose
+    const yAdduct=0.15;   // slight adduction toward torso
+    const xForward=0.08;  // subtle forward tilt
+    const zElbow=0.35;    // elbow bend
+    const yForeIn=0.10;   // forearm yaw inward
+    const yPalmIn=0.25;   // palms inward
+    const xWristFlex=0.10;// slight wrist flexion
+    const zUlnar=0.10;    // slight ulnar deviation
+    const shoulderDepress=0.10; // minimal shoulder depression
 
     try{
         const L=found.left;
-        if(L.upperArm){ L.upperArm.rotation.z += zDown; L.upperArm.rotation.x += xForward; }
-        if(L.foreArm){ L.foreArm.rotation.z += zElbow; }
-        if(L.hand){ L.hand.rotation.y += yHandIn; }
+        if(L.shoulder){ L.shoulder.rotation.z += shoulderDepress; }
+        if(L.upperArm){ L.upperArm.rotation.z += zDown; L.upperArm.rotation.y += yAdduct; L.upperArm.rotation.x += xForward; }
+        if(L.foreArm){ L.foreArm.rotation.z += zElbow; L.foreArm.rotation.y += yForeIn; }
+        if(L.hand){ L.hand.rotation.y += yPalmIn; L.hand.rotation.x += xWristFlex; L.hand.rotation.z += zUlnar; }
     }catch{}
     try{
         const R=found.right;
-        if(R.upperArm){ R.upperArm.rotation.z -= zDown; R.upperArm.rotation.x += xForward; }
-        if(R.foreArm){ R.foreArm.rotation.z -= zElbow; }
-        if(R.hand){ R.hand.rotation.y -= yHandIn; }
+        if(R.shoulder){ R.shoulder.rotation.z -= shoulderDepress; }
+        if(R.upperArm){ R.upperArm.rotation.z -= zDown; R.upperArm.rotation.y -= yAdduct; R.upperArm.rotation.x += xForward; }
+        if(R.foreArm){ R.foreArm.rotation.z -= zElbow; R.foreArm.rotation.y -= yForeIn; }
+        if(R.hand){ R.hand.rotation.y -= yPalmIn; R.hand.rotation.x += xWristFlex; R.hand.rotation.z -= zUlnar; }
+    }catch{}
+
+    // Gentle finger curl if present
+    const fingerNamesLeft=['index','middle','ring','pinky','little','thumb'];
+    const fingerNamesRight=['index','middle','ring','pinky','little','thumb'];
+    const curl=0.18; // radians per proximal/first segment
+    try{
+        model.traverse(node=>{
+            if(!node.isBone) return;
+            const n=(node.name||'').toLowerCase();
+            // left fingers
+            if(n.includes('left')||n.endsWith('.l')||n.endsWith('_l')){
+                if(fingerNamesLeft.some(f=>n.includes(f)) && (n.includes('1')||n.includes('prox')||n.includes('proximal'))){
+                    node.rotation.x += curl;
+                }
+            }
+            // right fingers
+            if(n.includes('right')||n.endsWith('.r')||n.endsWith('_r')){
+                if(fingerNamesRight.some(f=>n.includes(f)) && (n.includes('1')||n.includes('prox')||n.includes('proximal'))){
+                    node.rotation.x += curl;
+                }
+            }
+        });
     }catch{}
 }
 
