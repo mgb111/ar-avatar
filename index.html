@@ -440,6 +440,8 @@ function loadModel(url){
 
         // no lip sync UI
         loadingOverlay.style.display='none';
+        // Put arms down (adjust common upper-arm bones)
+        try{ putArmsDown(); }catch{}
     },xhr=>{},err=>{ loadingOverlay.style.display='none'; showStatusMessage('Failed to load 3D model'); });
 }
 
