@@ -74,6 +74,43 @@ import { ARButton } from 'three/addons/webxr/ARButton.js';
 // Backend proxy base URL (host your Node backend on Vercel/Render/Railway/Fly)
 // Example: https://your-backend.example.com
 const BACKEND_URL = 'https://ar-avatar.vercel.app';
+// Event context used to guide the avatar's responses
+const EVENT_CONTEXT = `Wedding Asia Mumbai at JW Marriott Juhu on September 24–25, 2025 is a premium bridal and wedding exhibition renowned for scale, luxury and breadth of offerings.
+
+Event Scale and Legacy:
+- Featured 5000+ exhibitors historically; a leading pan-India wedding showcase.
+- Mumbai edition brings designers, jewelers, planners and lifestyle brands under one roof for new‑age couples, parents and pros.
+
+Exhibitor and Brand Lineup:
+- Elite bridal/couture designers with try‑and‑order access to collections.
+- Top jewelry houses: bespoke bridal sets, polki, kundan, diamonds, platinum, temple gold.
+- Also: wedding planners, floral/decor specialists, photographers, trousseau packers, premium invitation makers, bridal accessories and lifestyle curation.
+- Heritage craft: Banarasi handlooms and regional weaving collectives for unique textiles.
+
+Event Structure and Experience:
+- Organized sections: bridal couture, groom’s attire, fine jewelry, trousseau essentials, stationery, thematic decor.
+- Live styling and fittings; book personalized consultations with select designers.
+- On‑the‑spot purchases and orders; previews of unreleased 2025 collections.
+- Curated styling advice and trend guidance for 2025 weddings.
+
+Special Features and Value:
+- Guidance for petite brides, destination planning, and safe/lux arrangements via expert workshops and journal content.
+- Networking hub for couples, families, and wedding professionals with industry leaders and influencers.
+- Artisanal gifting and lifestyle accessories broaden appeal beyond bridal shopping.
+
+Access and Registration:
+- Invitations/appointments via organizers: Call 92163 22509.
+- Early registration recommended due to high demand and limited personalized slots.
+- Online previews and galleries available for remote visitors.
+
+Trend Setting and Coverage:
+- Highlights annual trends: palettes, traditional revival, functional bridal wear, statement jewelry.
+- Strong media/social presence with Instagram and digital gallery updates.
+
+Journal & Thought Leadership:
+- Guides on petite‑bride shopping, 2025 trends, and planning safe luxury destination weddings.
+- Guests access journals and expert advice to make weddings trend‑forward yet personal.
+`;
 
 let camera, scene, renderer, controls, model, mixer, clock, jawOpenMorphTargetIndex = null, jawMesh = null, jawBone = null, jawBoneBaseX = 0, lastJaw=0;
 let reticle, speechRecognition, isListening=false, isSpeaking=false, isAIThinking=false, currentAudio=null, audioContext, analyser, dataArray;
@@ -278,7 +315,7 @@ async function processAIQueue(){
 async function getAIResponse(userPrompt){
     isAIThinking=true; micIcon.style.display='none'; thinkingIcon.style.display='block'; micButton.disabled=true; if(sendButton) sendButton.disabled=true; if(textInput) textInput.disabled=true;
 
-    const systemPrompt=`You are a helpful AR avatar assistant. Be concise and conversational.`;
+    const systemPrompt = `You are the brand ambassador avatar for Wedding Asia Mumbai at JW Marriott Juhu on Sep 24–25, 2025. Be warm, concise and conversational. Proactively describe the event when appropriate, and answer questions accurately using the provided context. Keep replies to 1–2 sentences unless the user asks for more details. If asked for contact/registration, mention: Call 92163 22509. Context:\n\n${EVENT_CONTEXT}`;
 
     try{
         if(!BACKEND_URL){ throw new Error('Backend URL not configured'); }
