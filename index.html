@@ -122,14 +122,14 @@ const LIP_BONE_NAME = '';
 
 // --- Lip-Sync Tuning (feel free to tweak quickly) ---
 // EXTREME settings to force visible lip movement
-const MOUTH_BASE_GAIN = 65.0; // stronger gain for much wider motion
-const MOUTH_SMOOTH = 0.003; // very fast response
-const MOUTH_SPIKE_CHANCE = 0.5; // frequent spikes for dramatic openings
-const LIP_BONE_MAX_OPEN = -3.2; // even more extreme jaw rotation
-const JAW_MORPH_GAIN = 2.2; // more exaggeration for morph influence
-const OPEN_VISEME_BIAS = 0.25; // bias towards open mouth shapes
-// Force movement even when not speaking
-const FORCE_MOVEMENT_ALWAYS = true;
+const MOUTH_BASE_GAIN = 3.0; // reasonable gain from audio amplitude
+const MOUTH_SMOOTH = 0.5;   // moderate smoothing for natural motion
+const MOUTH_SPIKE_CHANCE = 0.0; // no random spikes
+const LIP_BONE_MAX_OPEN = -0.6; // conservative jaw rotation if using bones
+const JAW_MORPH_GAIN = 1.0; // natural morph influence
+const OPEN_VISEME_BIAS = 0.0; // no bias towards open mouth
+// Do NOT force movement when not speaking
+const FORCE_MOVEMENT_ALWAYS = false;
 
 let camera, scene, renderer, controls, model, mixer, clock, jawOpenMorphTargetIndex = null, jawMesh = null, jawBone = null, jawBoneBaseX = 0, lastJaw=0;
 // Viseme morph targets discovered in the model: { mesh, name, index }
@@ -289,6 +289,16 @@ function applyVisemeWeights(weights){
             else if(k.includes('fv') || k.includes('teeth') || k.includes('lip') || k.includes('mbp')) w = Math.max(weights['fv']||0, weights['mbp']||0);
             else w = (weights['open']||0)*0.2;
             mesh.morphTargetInfluences[t.index] = Math.min(1, w);
+        }
+    }
+}
+
+// Helper to zero all discovered viseme morph targets
+function zeroVisemes(){
+    if(!visemeTargets.length) return;
+    for(const t of visemeTargets){
+        if(t.mesh && t.mesh.morphTargetInfluences && typeof t.index === 'number'){
+            t.mesh.morphTargetInfluences[t.index] = 0;
         }
     }
 }
@@ -491,6 +501,7 @@ async function generateAndPlaySpeech(text){
         audio.onended=()=>{
             isSpeaking=false;
             jawOpenMorphTargetIndex!==null && setJaw(0);
+            try{ zeroVisemes(); }catch{}
             try{ if(audioSource){ audioSource.disconnect(); audioSource=null; } }catch{}
             try{ if(analyser){ analyser.disconnect(); analyser=null; } }catch{}
             try{ URL.revokeObjectURL(audioUrl); }catch{}
@@ -515,16 +526,10 @@ function animateJawSync(){
     // Base derived from audio
     let base = avgAmplitude*MOUTH_BASE_GAIN; // massive base
     
-    // Force movement even when not speaking for testing
-    if(!isSpeaking && !FORCE_MOVEMENT_ALWAYS){
-        setJaw(base);
-        return;
-    }
-    
-    // Add constant pulsing when not speaking for visibility
-    if(!isSpeaking && FORCE_MOVEMENT_ALWAYS){
-        const testPulse = Math.abs(Math.sin(performance.now() * 0.01)) * 0.8;
-        setJaw(Math.max(base, testPulse));
+    // When not speaking, keep mouth closed
+    if(!isSpeaking){
+        setJaw(0);
+        zeroVisemes();
         return;
     }
 
@@ -546,8 +551,8 @@ function animateJawSync(){
     const jawV = Math.min(combined, 1);
     setJaw(jawV);
 
-    // Drive mouth shapes (visemes) from frequency bands for visible lip changes
-    driveVisemesFromAudio();
+    // Drive mouth shapes (visemes) only when speaking and audio is present
+    if(analyser && dataArray) driveVisemesFromAudio();
 }
 
 function setJaw(value){
