@@ -528,12 +528,12 @@ function animateJawSync(){
     const now = performance.now();
     if(now >= nextMouthChange){
         // Pick a new random target openness and next change time
-        // Favor mid-to-high values occasionally to ensure visibility
+        // Distribution: 45% closed (0.1-0.3), 10% medium (0.35-0.7), 45% wide (0.7-1.0)
         const r = Math.random();
-        if(r < 0.15) mouthTarget = 0.1 + Math.random()*0.2;          // mostly closed
-        else if(r < 0.65) mouthTarget = 0.35 + Math.random()*0.35;    // medium range
-        else mouthTarget = 0.7 + Math.random()*0.3;                    // wide open now and then
-        nextMouthChange = now + 220 + Math.random()*580;               // 220..800 ms
+        if(r < 0.45) mouthTarget = 0.1 + Math.random()*0.2;         // mostly closed
+        else if(r < 0.55) mouthTarget = 0.35 + Math.random()*0.35;  // medium range
+        else mouthTarget = 0.7 + Math.random()*0.3;                  // wide open
+        nextMouthChange = now + 220 + Math.random()*580;             // 220..800 ms
     }
     // Interpolate smoothly towards target
     const lerp = 0.15; // smoothing factor per frame
