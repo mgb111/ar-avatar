@@ -123,13 +123,15 @@ const LIP_BONE_NAME = '';
 // --- Lip-Sync Tuning (feel free to tweak quickly) ---
 // EXTREME settings to force visible lip movement
 const MOUTH_BASE_GAIN = 3.0; // reasonable gain from audio amplitude
-const MOUTH_SMOOTH = 0.5;   // moderate smoothing for natural motion
+const MOUTH_SMOOTH = 0.0;   // no smoothing for crisp open/close
 const MOUTH_SPIKE_CHANCE = 0.0; // no random spikes
 const LIP_BONE_MAX_OPEN = -0.6; // conservative jaw rotation if using bones
-const JAW_MORPH_GAIN = 1.0; // natural morph influence
+const JAW_MORPH_GAIN = 1.3; // slightly stronger morph influence
 const OPEN_VISEME_BIAS = 0.0; // no bias towards open mouth
 // Do NOT force movement when not speaking
 const FORCE_MOVEMENT_ALWAYS = false;
+// Drive visemes from audio bands (set to true if you want extra lip shapes)
+const USE_VISEMES = false;
 
 let camera, scene, renderer, controls, model, mixer, clock, jawOpenMorphTargetIndex = null, jawMesh = null, jawBone = null, jawBoneBaseX = 0, lastJaw=0;
 // Viseme morph targets discovered in the model: { mesh, name, index }
@@ -528,9 +530,10 @@ function animateJawSync(){
         mouthToggleOpen = !mouthToggleOpen;
         lastMouthToggle = now;
     }
+    // Optionally drive visemes if enabled
+    if(USE_VISEMES && analyser && dataArray) driveVisemesFromAudio();
+    // Finally apply the jaw toggle so it is not overridden by visemes
     setJaw(mouthToggleOpen ? 1 : 0);
-    // Optionally drive visemes if analyser present (does not affect jaw toggle)
-    if(analyser && dataArray) driveVisemesFromAudio();
 }
 
 function setJaw(value){
@@ -668,6 +671,15 @@ function loadModel(url){
                     return;
                 }
             });
+        }
+
+        // Report what control was detected for diagnostics
+        if(jawMesh && jawOpenMorphTargetIndex!==null){
+            console.log('[LipSync] Using morph target', bestMorphName || '(unknown)', 'on mesh', jawMesh.name, 'index', jawOpenMorphTargetIndex);
+        } else if(jawBone){
+            console.log('[LipSync] Using bone', jawBone.name);
+        } else {
+            console.warn('[LipSync] No jaw morph or bone detected. Consider setting LIP_MESH_NAME/LIP_MORPH_NAME or LIP_BONE_NAME.');
         }
 
         // no lip sync UI
