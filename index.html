@@ -53,6 +53,25 @@
         <input id="text-input" type="text" placeholder="Type your prompt..." class="flex-1 px-3 py-2 rounded-md bg-gray-800 text-gray-100 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500" />
         <button id="send-button" class="px-4 py-2 rounded-md bg-green-600 hover:bg-green-700 text-white font-semibold">Send</button>
     </div>
+
+    <!-- Model upload and annotations controls -->
+    <div id="model-annotation-toolbar" class="mt-3 flex flex-col gap-2 items-center bg-gray-900/70 border border-gray-700 rounded-lg p-3 w-[90vw] max-w-[720px]">
+        <div class="w-full flex flex-wrap gap-2 items-center justify-center">
+            <input id="model-file" type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" class="text-sm text-gray-200" />
+            <button id="load-model-btn" class="px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold">Load 3D Model</button>
+            <input id="model-url" type="url" placeholder="Paste model URL (.glb/.gltf)" class="px-2 py-1 rounded bg-gray-800 text-gray-100 border border-gray-600 text-sm w-[320px]" />
+            <button id="load-url-btn" class="px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold">Load URL</button>
+            <button id="toggle-annotate-btn" class="px-3 py-1.5 rounded-md bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-semibold">Add Annotation</button>
+            <button id="auto-annotate-btn" class="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold">Auto‑Annotate Parts</button>
+            <button id="export-annotations-btn" class="px-3 py-1.5 rounded-md bg-gray-700 hover:bg-gray-600 text-white text-sm">Export JSON</button>
+            <label class="px-3 py-1.5 rounded-md bg-gray-700 hover:bg-gray-600 text-white text-sm cursor-pointer">
+                Import JSON
+                <input id="import-annotations-file" type="file" accept="application/json" class="hidden" />
+            </label>
+        </div>
+        <div id="annotate-hint" class="text-xs text-gray-300" style="display:none;">Annotation mode: click/tap on the model to place a label. Click again to add more. Toggle off to stop.</div>
+        <div id="annotations-list" class="w-full max-h-48 overflow-auto flex flex-col gap-2"></div>
+    </div>
 </div>
 
 <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
@@ -149,6 +168,9 @@ let audioSource, activeGesture=null, initialScale=new THREE.Vector3(), initialPi
 let isRotatingOneFinger=false, rotateStartX=0, rotateStartY=0, initialYaw=0;
 let initialTwoFingerAngle=0;
 
+// Annotations state
+let annotating=false; const annotations=[]; const raycaster=new THREE.Raycaster(); const pointer=new THREE.Vector2();
+
 const loadingOverlay=document.getElementById('loading-overlay');
 const arButtonContainer=document.getElementById('ar-button-container');
 const arInstructions=document.getElementById('ar-instructions');
@@ -160,6 +182,19 @@ const thinkingIcon=document.getElementById('thinking-icon');
 const micLevelFill=document.getElementById('mic-level-fill');
 const textInput=document.getElementById('text-input');
 const sendButton=document.getElementById('send-button');
+
+// Annotation/UI elements
+const modelFileInput=document.getElementById('model-file');
+const loadModelBtn=document.getElementById('load-model-btn');
+const toggleAnnotateBtn=document.getElementById('toggle-annotate-btn');
+const exportAnnotationsBtn=document.getElementById('export-annotations-btn');
+const importAnnotationsFile=document.getElementById('import-annotations-file');
+const annotationsList=document.getElementById('annotations-list');
+const annotateHint=document.getElementById('annotate-hint');
+// URL + auto annotate controls
+const modelUrlInput=document.getElementById('model-url');
+const loadUrlBtn=document.getElementById('load-url-btn');
+const autoAnnotateBtn=document.getElementById('auto-annotate-btn');
 
 // debug elements removed
 
@@ -211,6 +246,9 @@ function init(){
     renderer.domElement.addEventListener('touchstart',onTouchStart,{passive:false});
     renderer.domElement.addEventListener('touchmove',onTouchMove,{passive:false});
     renderer.domElement.addEventListener('touchend',onTouchEnd);
+
+    // Mouse support for annotations on desktop
+    renderer.domElement.addEventListener('pointerdown',onPointerDown);
 
     renderer.setAnimationLoop(animate);
     // Start jaw animation loop even without audio so mouth moves anyhow if forced
@@ -696,8 +734,150 @@ function loadModel(url){
     },xhr=>{},err=>{ loadingOverlay.style.display='none'; showStatusMessage('Failed to load 3D model'); });
 }
 
+// Load a local file (.glb/.gltf)
+function loadModelFromFile(file){
+    if(!file) return;
+    try{
+        const url=URL.createObjectURL(file);
+        // Remove previous model and annotations
+        try{ if(model){ scene.remove(model); model.traverse(o=>{ if(o.material?.map?.dispose) o.material.map.dispose(); if(o.material?.dispose) o.material.dispose(); if(o.geometry?.dispose) o.geometry.dispose(); }); } }catch{}
+        clearAllAnnotations();
+        model=null; jawMesh=null; jawBone=null; jawOpenMorphTargetIndex=null; visemeTargets=[]; isPlaced=false; if(reticle){ reticle.visible=true; }
+        loadModel(url);
+    }catch(e){ console.error(e); showStatusMessage('Could not load selected model'); }
+}
+
+// UI handlers for model load and annotations
+if(loadModelBtn){ loadModelBtn.addEventListener('click',()=>{ const f=modelFileInput?.files?.[0]; if(!f){ showStatusMessage('Select a .glb/.gltf file'); return; } loadModelFromFile(f); }); }
+if(toggleAnnotateBtn){ toggleAnnotateBtn.addEventListener('click',()=>{ annotating=!annotating; toggleAnnotateBtn.textContent=annotating?'Stop Annotating':'Add Annotation'; if(annotateHint) annotateHint.style.display=annotating?'block':'none'; }); }
+if(exportAnnotationsBtn){ exportAnnotationsBtn.addEventListener('click',()=>{ exportAnnotations(); }); }
+if(importAnnotationsFile){ importAnnotationsFile.addEventListener('change',(e)=>{ const f=e.target.files?.[0]; if(!f) return; importAnnotationsFromFile(f); e.target.value=''; }); }
+if(loadUrlBtn){ loadUrlBtn.addEventListener('click',()=>{ const url=(modelUrlInput?.value||'').trim(); if(!url){ showStatusMessage('Paste a model URL'); return; } loadModelFromUrl(url); }); }
+if(modelUrlInput){ modelUrlInput.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ const url=(modelUrlInput.value||'').trim(); if(url) loadModelFromUrl(url); } }); }
+if(autoAnnotateBtn){ autoAnnotateBtn.addEventListener('click',()=>{ autoAnnotateParts(); }); }
+
+function onPointerDown(event){
+    if(!annotating || !model) return;
+    const rect=renderer.domElement.getBoundingClientRect();
+    pointer.x=((event.clientX-rect.left)/rect.width)*2-1;
+    pointer.y=-((event.clientY-rect.top)/rect.height)*2+1;
+    placeAnnotationFromPointer();
+}
+
+function placeAnnotationFromPointer(){
+    raycaster.setFromCamera(pointer,camera);
+    const meshes=[]; model.traverse(o=>{ if(o.isMesh) meshes.push(o); });
+    const hits=raycaster.intersectObjects(meshes,true);
+    if(hits.length){ const p=hits[0].point.clone(); addAnnotation(p,''); }
+}
+
+function addAnnotation(worldPos,text){
+    const id = 'ann_'+Math.random().toString(36).slice(2,8);
+    const sprite=createLabelSprite(text||'Label');
+    sprite.position.copy(worldPos);
+    sprite.renderOrder=999;
+    scene.add(sprite);
+    // store position relative to model so it moves/scales with it
+    const localPos = worldPos.clone();
+    if(model){ model.worldToLocal(localPos); }
+    annotations.push({ id, text: (text||'Label'), localPos, sprite });
+    refreshAnnotationsList();
+}
+
+function createLabelSprite(text){
+    const padX=8, padY=4, fontSize=24, radius=8;
+    const ctx=document.createElement('canvas').getContext('2d');
+    ctx.font=`${fontSize}px Inter, Arial, sans-serif`;
+    const textW=Math.ceil(ctx.measureText(text||'Label').width);
+    const w=textW+padX*2, h=fontSize+padY*2;
+    ctx.canvas.width=w*2; ctx.canvas.height=h*2; // HiDPI
+    ctx.scale(2,2); ctx.font=`${fontSize}px Inter, Arial, sans-serif`;
+    // rounded rect bg
+    ctx.fillStyle='rgba(17,24,39,0.9)';
+    ctx.strokeStyle='rgba(255,255,255,0.8)'; ctx.lineWidth=1;
+    roundRect(ctx,0.5,0.5,w-1,h-1,radius);
+    ctx.fill(); ctx.stroke();
+    // text
+    ctx.fillStyle='#fff'; ctx.textBaseline='middle'; ctx.fillText(text||'Label', padX, h/2);
+    const tex=new THREE.CanvasTexture(ctx.canvas); tex.needsUpdate=true; tex.minFilter=THREE.LinearFilter; tex.magFilter=THREE.LinearFilter; tex.encoding=THREE.sRGBEncoding;
+    const mat=new THREE.SpriteMaterial({ map: tex, depthTest:true, depthWrite:false, transparent:true });
+    const spr=new THREE.Sprite(mat);
+    spr.scale.set(w/100, h/100, 1);
+    spr.userData.tex=tex; spr.userData.text=text;
+    return spr;
+}
+function roundRect(ctx,x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r); ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h); ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r); ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath(); }
+
+function refreshAnnotationsList(){
+    if(!annotationsList) return;
+    annotationsList.innerHTML='';
+    annotations.forEach((a,idx)=>{
+        const row=document.createElement('div');
+        row.className='flex items-center gap-2';
+        const input=document.createElement('input');
+        input.value=a.text; input.className='flex-1 px-2 py-1 rounded bg-gray-800 text-gray-100 border border-gray-600 text-sm';
+        input.addEventListener('input',()=>{ a.text=input.value; updateSpriteText(a); });
+        const focusBtn=document.createElement('button'); focusBtn.textContent='Focus'; focusBtn.className='px-2 py-1 text-xs rounded bg-blue-600 hover:bg-blue-700';
+        focusBtn.addEventListener('click',()=>{ const wp=a.localPos.clone(); if(model){ model.localToWorld(wp); } camera.position.lerp(wp.clone().add(new THREE.Vector3(0.5,0.5,1.2)), 0.6); controls.target.copy(wp); controls.update(); });
+        const delBtn=document.createElement('button'); delBtn.textContent='Delete'; delBtn.className='px-2 py-1 text-xs rounded bg-red-600 hover:bg-red-700';
+        delBtn.addEventListener('click',()=>{ removeAnnotation(a.id); });
+        row.appendChild(document.createTextNode(`#${idx+1}`)); row.appendChild(input); row.appendChild(focusBtn); row.appendChild(delBtn);
+        annotationsList.appendChild(row);
+    });
+}
+
+function updateSpriteText(a){
+    const spr=a.sprite; const text=a.text||'Label';
+    const ctx=document.createElement('canvas').getContext('2d');
+    const padX=8, padY=4, fontSize=24, radius=8;
+    ctx.font=`${fontSize}px Inter, Arial, sans-serif`;
+    const textW=Math.ceil(ctx.measureText(text).width);
+    const w=textW+padX*2, h=fontSize+padY*2;
+    ctx.canvas.width=w*2; ctx.canvas.height=h*2; ctx.scale(2,2); ctx.font=`${fontSize}px Inter, Arial, sans-serif`;
+    ctx.fillStyle='rgba(17,24,39,0.9)'; ctx.strokeStyle='rgba(255,255,255,0.8)'; ctx.lineWidth=1; roundRect(ctx,0.5,0.5,w-1,h-1,radius); ctx.fill(); ctx.stroke(); ctx.fillStyle='#fff'; ctx.textBaseline='middle'; ctx.fillText(text, padX, h/2);
+    const newTex=new THREE.CanvasTexture(ctx.canvas); newTex.needsUpdate=true; newTex.minFilter=THREE.LinearFilter; newTex.magFilter=THREE.LinearFilter; newTex.encoding=THREE.sRGBEncoding;
+    spr.material.map.dispose(); spr.material.map=newTex; spr.userData.tex=newTex; spr.scale.set(w/100, h/100, 1);
+}
+
+function removeAnnotation(id){
+    const idx=annotations.findIndex(a=>a.id===id);
+    if(idx>=0){ const a=annotations[idx]; try{ scene.remove(a.sprite); a.sprite.material.map?.dispose?.(); a.sprite.material?.dispose?.(); }catch{} annotations.splice(idx,1); refreshAnnotationsList(); }
+}
+
+function clearAllAnnotations(){
+    while(annotations.length){ const a=annotations.pop(); try{ scene.remove(a.sprite); a.sprite.material.map?.dispose?.(); a.sprite.material?.dispose?.(); }catch{} }
+    refreshAnnotationsList();
+}
+
+function exportAnnotations(){
+    if(!model){ showStatusMessage('No model loaded'); return; }
+    const data=annotations.map(a=>({ id:a.id, text:a.text, localPos:{ x:a.localPos.x, y:a.localPos.y, z:a.localPos.z } }));
+    const blob=new Blob([JSON.stringify({ annotations:data }, null, 2)], { type:'application/json' });
+    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='annotations.json'; a.click(); URL.revokeObjectURL(url);
+}
+
+async function importAnnotationsFromFile(file){
+    try{
+        const text=await file.text();
+        const json=JSON.parse(text);
+        if(!json?.annotations || !Array.isArray(json.annotations)){ showStatusMessage('Invalid annotations file'); return; }
+        clearAllAnnotations();
+        json.annotations.forEach(e=>{
+            const lp=new THREE.Vector3(e.localPos.x, e.localPos.y, e.localPos.z);
+            const wp=lp.clone(); if(model){ model.localToWorld(wp); }
+            addAnnotation(wp, e.text||'');
+        });
+    }catch(e){ console.error(e); showStatusMessage('Failed to import annotations'); }
+}
+
 // --- AR Placement --- //
 function onSelect(){
+    // When annotating in AR, place an annotation towards screen center
+    if(annotating && model){
+        pointer.set(0,0); // center of screen
+        placeAnnotationFromPointer();
+        return;
+    }
     if(!reticle.visible) return;
     // Only allow first-time placement via tap. Later moves require long-press.
     if(!isPlaced && model){
@@ -774,7 +954,17 @@ function onTouchEnd(e){
 function onWindowResize(){ camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight); }
 
 // --- Animate Loop --- //
-function animate(){ const delta=clock.getDelta(); if(mixer) mixer.update(delta); renderer.render(scene,camera); updateARHitTest(); updateMicLevel(); }
+function animate(){ const delta=clock.getDelta(); if(mixer) mixer.update(delta); updateAnnotationSprites(); renderer.render(scene,camera); updateARHitTest(); updateMicLevel(); }
+
+function updateAnnotationSprites(){
+    // keep sprites facing camera and reasonably sized, and stick to model transform
+    annotations.forEach(a=>{
+        const spr=a.sprite; spr.lookAt(camera.position);
+        if(model){ const wp=a.localPos.clone(); model.localToWorld(wp); spr.position.copy(wp); }
+        const dist=camera.position.distanceTo(spr.position);
+        const base=0.12; spr.scale.setScalar(Math.max(base*dist*0.1, base));
+    });
+}
 
 function updateARHitTest(){
     if(renderer.xr.isPresenting && !hitTestSourceRequested){
