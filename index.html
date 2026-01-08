@@ -6,8 +6,7 @@
 <title>AI Avatar Lip-Sync & AR - Enhanced</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-    body { font-family: 'Inter', sans-serif; margin:0; overflow:hidden; background-color:#111827; color:#f3f4f6;
-           background-image:url('Gemini_Generated_Image_jaowf8jaowf8jaow.png'); background-size:cover; background-position:center; background-repeat:no-repeat; }
+    body { font-family: 'Inter', sans-serif; margin:0; overflow:hidden; background-color:#000000; color:#f3f4f6; }
     canvas { display:block; width:100%; height:100%; }
     #ar-button-container { position:absolute; top:0; left:0; right:0; bottom:0; display:flex; justify-content:center; align-items:center; z-index:20; }
     #ar-button { background-color: rgba(31,41,55,0.8); color:white; padding:1rem 2rem; font-size:1.25rem; border-radius:9999px; border:1px solid rgba(75,85,99,0.8); cursor:pointer; font-weight:600; box-shadow:0 4px 6px rgba(0,0,0,0.1); transition: all 0.2s; }
@@ -70,6 +69,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { DeviceOrientationControls } from 'three/addons/controls/DeviceOrientationControls.js';
 import { ARButton } from 'three/addons/webxr/ARButton.js';
 
 // Backend proxy base URL (host your Node backend on Vercel/Render/Railway/Fly)
@@ -170,7 +170,7 @@ const FORCE_MOVEMENT_ALWAYS = false;
 // Drive visemes from audio bands (set to true if you want extra lip shapes)
 const USE_VISEMES = false;
 
-let camera, scene, renderer, controls, model, mixer, clock, jawOpenMorphTargetIndex = null, jawMesh = null, jawBone = null, jawBoneBaseX = 0, lastJaw=0;
+let camera, scene, renderer, controls, deviceControls=null, model, mixer, clock, jawOpenMorphTargetIndex = null, jawMesh = null, jawBone = null, jawBoneBaseX = 0, lastJaw=0;
 // Viseme morph targets discovered in the model: { mesh, name, index }
 let visemeTargets = [];
 // Mouth pulsing state for more expressive movement
@@ -196,6 +196,7 @@ const thinkingIcon=document.getElementById('thinking-icon');
 const micLevelFill=document.getElementById('mic-level-fill');
 const textInput=document.getElementById('text-input');
 const sendButton=document.getElementById('send-button');
+const gyroButton=document.getElementById('gyro-button');
 
 // debug elements removed
 
