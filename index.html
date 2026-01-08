@@ -296,6 +296,9 @@ function init(){
     if(FORCE_MOVEMENT_ALWAYS){
         try{ animateJawSync(); }catch{}
     }
+
+    // Safety: ensure loading overlay is cleared once core scene is ready
+    if(loadingOverlay){ loadingOverlay.style.display='none'; }
 }
 
 // --- Functions --- //
