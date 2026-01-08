@@ -6,7 +6,7 @@
 <title>AI Avatar Lip-Sync & AR - Enhanced</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-    body { font-family: 'Inter', sans-serif; margin:0; overflow:hidden; background-color:#000000; color:#f3f4f6; }
+    body { font-family: 'Inter', sans-serif; margin:0; overflow:hidden; background-color:#111827; color:#f3f4f6; }
     canvas { display:block; width:100%; height:100%; }
     #ar-button-container { position:absolute; top:0; left:0; right:0; bottom:0; display:flex; justify-content:center; align-items:center; z-index:20; }
     #ar-button { background-color: rgba(31,41,55,0.8); color:white; padding:1rem 2rem; font-size:1.25rem; border-radius:9999px; border:1px solid rgba(75,85,99,0.8); cursor:pointer; font-weight:600; box-shadow:0 4px 6px rgba(0,0,0,0.1); transition: all 0.2s; }
@@ -42,11 +42,6 @@
     <button id="ar-button-placeholder">Enter Augmented Reality</button>
     </div>
 
-<!-- Gyro / 360 enable button for mobile -->
-<button id="gyro-button" class="fixed top-4 right-4 z-20 px-3 py-2 rounded-md bg-gray-800/80 text-sm text-gray-100 border border-gray-600 hidden">
-    Enable 360 View
-</button>
-
 <div id="ar-controls-container" style="position:absolute; bottom:2rem; left:50%; transform:translateX(-50%); z-index:10; display:none; flex-direction:column; align-items:center; gap:0.5rem;">
     <button id="mic-button" class="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white font-bold p-4 rounded-full transition duration-200 shadow-lg flex justify-center items-center">
         <svg id="mic-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
@@ -74,7 +69,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { DeviceOrientationControls } from 'three/addons/controls/DeviceOrientationControls.js';
 import { ARButton } from 'three/addons/webxr/ARButton.js';
 
 // Backend proxy base URL (host your Node backend on Vercel/Render/Railway/Fly)
@@ -175,7 +169,7 @@ const FORCE_MOVEMENT_ALWAYS = false;
 // Drive visemes from audio bands (set to true if you want extra lip shapes)
 const USE_VISEMES = false;
 
-let camera, scene, renderer, controls, deviceControls=null, model, mixer, clock, jawOpenMorphTargetIndex = null, jawMesh = null, jawBone = null, jawBoneBaseX = 0, lastJaw=0;
+let camera, scene, renderer, controls, model, mixer, clock, jawOpenMorphTargetIndex = null, jawMesh = null, jawBone = null, jawBoneBaseX = 0, lastJaw=0;
 // Viseme morph targets discovered in the model: { mesh, name, index }
 let visemeTargets = [];
 // Mouth pulsing state for more expressive movement
@@ -201,7 +195,6 @@ const thinkingIcon=document.getElementById('thinking-icon');
 const micLevelFill=document.getElementById('mic-level-fill');
 const textInput=document.getElementById('text-input');
 const sendButton=document.getElementById('send-button');
-const gyroButton=document.getElementById('gyro-button');
 
 // debug elements removed
 
@@ -236,16 +229,16 @@ function init(){
 
     controls=new OrbitControls(camera,renderer.domElement);
     controls.target.set(0,1,0);
+    controls.enablePan=false;
     controls.update();
 
-    // 360° environment sphere from background image
     const textureLoader = new THREE.TextureLoader();
     textureLoader.load('Gemini_Generated_Image_jaowf8jaowf8jaow.png', (texture)=>{
-        const geometry = new THREE.SphereGeometry(50, 64, 64);
-        geometry.scale(-1, 1, 1); // invert so we are inside the sphere
-        const material = new THREE.MeshBasicMaterial({ map: texture });
-        const skySphere = new THREE.Mesh(geometry, material);
-        scene.add(skySphere);
+        const panoGeo = new THREE.SphereGeometry(20, 64, 64);
+        const panoMat = new THREE.MeshBasicMaterial({ map:texture, side:THREE.BackSide });
+        const panoMesh = new THREE.Mesh(panoGeo, panoMat);
+        panoMesh.position.set(0,0,0);
+        scene.add(panoMesh);
     }, undefined, (err)=>{
         console.error('Failed to load Gemini_Generated_Image_jaowf8jaowf8jaow.png', err);
         showStatusMessage('Could not load background image Gemini_Generated_Image_jaowf8jaowf8jaow.png');
@@ -261,31 +254,6 @@ function init(){
         textInput?.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); sendText(); }});
     }
 
-    // Show gyro button on devices that support DeviceOrientation
-    if(gyroButton && typeof window !== 'undefined'){
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
-        if(isMobile){ gyroButton.classList.remove('hidden'); }
-
-        gyroButton.addEventListener('click', async ()=>{
-            try{
-                // iOS requires explicit permission
-                if(typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
-                    const res = await DeviceOrientationEvent.requestPermission();
-                    if(res !== 'granted'){ showStatusMessage('Gyro access denied'); return; }
-                }
-                deviceControls = new DeviceOrientationControls(camera);
-                deviceControls.connect();
-                // Disable manual orbit when gyro is active
-                if(controls) controls.enabled = false;
-                gyroButton.classList.add('hidden');
-                showStatusMessage('360 view enabled', false);
-            } catch(e){
-                console.error(e);
-                showStatusMessage('Unable to enable 360 view');
-            }
-        });
-    }
-
     window.addEventListener('resize',onWindowResize);
     renderer.domElement.addEventListener('touchstart',onTouchStart,{passive:false});
     renderer.domElement.addEventListener('touchmove',onTouchMove,{passive:false});
@@ -296,9 +264,6 @@ function init(){
     if(FORCE_MOVEMENT_ALWAYS){
         try{ animateJawSync(); }catch{}
     }
-
-    // Safety: ensure loading overlay is cleared once core scene is ready
-    if(loadingOverlay){ loadingOverlay.style.display='none'; }
 }
 
 // --- Functions --- //
@@ -856,15 +821,7 @@ function onTouchEnd(e){
 function onWindowResize(){ camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight); }
 
 // --- Animate Loop --- //
-function animate(){
-    const delta = clock.getDelta();
-    if(mixer) mixer.update(delta);
-    // When gyro controls are active, they drive the camera orientation
-    if(deviceControls){ deviceControls.update(); }
-    renderer.render(scene,camera);
-    updateARHitTest();
-    updateMicLevel();
-}
+function animate(){ const delta=clock.getDelta(); if(mixer) mixer.update(delta); renderer.render(scene,camera); updateARHitTest(); updateMicLevel(); }
 
 function updateARHitTest(){
     if(renderer.xr.isPresenting && !hitTestSourceRequested){
