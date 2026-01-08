@@ -624,6 +624,8 @@ function loadModel(url){
     const loader=new GLTFLoader();
     loader.load(url, gltf=>{
         model=gltf.scene; scene.add(model); model.position.set(0,0,0); model.visible=true;
+        // Rotate avatar 90 degrees to the right (clockwise when viewed from above)
+        model.rotation.y = -Math.PI / 2;
         // Ensure teeth meshes are visible
         model.traverse(child=>{
             const n=(child.name||'').toLowerCase();
