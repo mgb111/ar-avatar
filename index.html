@@ -623,7 +623,10 @@ function setJaw(value){
 function loadModel(url){
     const loader=new GLTFLoader();
     loader.load(url, gltf=>{
-        model=gltf.scene; scene.add(model); model.position.set(0,0,0); model.visible=true;
+        model=gltf.scene; scene.add(model);
+        // Position avatar slightly left (negative X) and back (negative Z)
+        model.position.set(-0.5, 0, -1.5);
+        model.visible=true;
         // Rotate avatar 90 degrees to the right (clockwise when viewed from above)
         model.rotation.y = -Math.PI / 2;
         // Ensure teeth meshes are visible
