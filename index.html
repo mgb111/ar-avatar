@@ -38,9 +38,9 @@
 
 <div id="status-message"></div>
 
-<div id="ar-button-container">
-    <button id="ar-button-placeholder">View Avatar with Courtroom Background</button>
-</div>
+<div id="ar-button-container" style="display:none;">
+    <button id="ar-button-placeholder">Enter Augmented Reality</button>
+    </div>
 
 <div id="ar-controls-container" style="position:absolute; bottom:2rem; left:50%; transform:translateX(-50%); z-index:10; display:none; flex-direction:column; align-items:center; gap:0.5rem;">
     <button id="mic-button" class="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white font-bold p-4 rounded-full transition duration-200 shadow-lg flex justify-center items-center">
@@ -69,6 +69,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { ARButton } from 'three/addons/webxr/ARButton.js';
 
 // Backend proxy base URL (host your Node backend on Vercel/Render/Railway/Fly)
 // Example: https://your-backend.example.com
@@ -223,23 +224,20 @@ function init(){
     renderer=new THREE.WebGLRenderer({ antialias:true, alpha:true });
     renderer.setSize(window.innerWidth,window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.xr.enabled=true;
-    
-    // Load courtroom background image
-    const textureLoader = new THREE.TextureLoader();
-    const bgTexture = textureLoader.load('courtroom.png');
-    bgTexture.colorSpace = THREE.SRGBColorSpace;
-    scene.background = bgTexture;
-    
+    renderer.xr.enabled=false;
     document.body.appendChild(renderer.domElement);
 
     controls=new OrbitControls(camera,renderer.domElement);
     controls.target.set(0,1,0);
     controls.update();
 
+    const textureLoader = new THREE.TextureLoader();
+    textureLoader.load('courtoom.png', (texture)=>{
+        scene.background = texture;
+    });
+
     loadModel(defaultAvatarUrl);
     setupSpeechRecognition();
-    setupAR();
 
     micButton.addEventListener('click',toggleListening);
     if(sendButton){
@@ -351,18 +349,13 @@ function zeroVisemes(){
 
 // --- AR Button --- //
 function setupAR(){
-    // Disable AR functionality since using static background
-    const arButton = document.createElement('button');
+    const arButton=ARButton.createButton(renderer,{ requiredFeatures:['hit-test','dom-overlay'], domOverlay:{root:document.body} });
     arButton.id='ar-button';
-    arButton.textContent="View Avatar (Static Background)";
-    arButton.className = "bg-gray-600 hover:bg-gray-700 text-white p-4 rounded-lg";
-    arButton.addEventListener('click',()=>{
-        showStatusMessage('Avatar loaded with static courtroom background', false);
-        arControlsContainer.style.display='flex';
-    });
+    arButton.textContent="Enter Augmented Reality";
+    arButton.addEventListener('click',()=>{ if(audioContext.state==='suspended') audioContext.resume(); });
     renderer.xr.addEventListener('sessionstart',()=>{
         arButtonContainer.style.display='none';
-        arInstructions.style.display='none';
+        arInstructions.style.display='flex';
         controls.enabled=false;
         arControlsContainer.style.display='flex';
     });
