@@ -225,6 +225,13 @@ function init(){
     renderer.setSize(window.innerWidth,window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.xr.enabled=true;
+    
+    // Load courtroom background image
+    const textureLoader = new THREE.TextureLoader();
+    const bgTexture = textureLoader.load('courtroom.png');
+    bgTexture.colorSpace = THREE.SRGBColorSpace;
+    scene.background = bgTexture;
+    
     document.body.appendChild(renderer.domElement);
 
     controls=new OrbitControls(camera,renderer.domElement);
@@ -345,13 +352,18 @@ function zeroVisemes(){
 
 // --- AR Button --- //
 function setupAR(){
-    const arButton=ARButton.createButton(renderer,{ requiredFeatures:['hit-test','dom-overlay'], domOverlay:{root:document.body} });
+    // Disable AR functionality since using static background
+    const arButton = document.createElement('button');
     arButton.id='ar-button';
-    arButton.textContent="Enter Augmented Reality";
-    arButton.addEventListener('click',()=>{ if(audioContext.state==='suspended') audioContext.resume(); });
+    arButton.textContent="View Avatar (Static Background)";
+    arButton.className = "bg-gray-600 hover:bg-gray-700 text-white p-4 rounded-lg";
+    arButton.addEventListener('click',()=>{
+        showStatusMessage('Avatar loaded with static courtroom background', false);
+        arControlsContainer.style.display='flex';
+    });
     renderer.xr.addEventListener('sessionstart',()=>{
         arButtonContainer.style.display='none';
-        arInstructions.style.display='flex';
+        arInstructions.style.display='none';
         controls.enabled=false;
         arControlsContainer.style.display='flex';
     });
