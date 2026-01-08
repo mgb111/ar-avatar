@@ -255,9 +255,6 @@ function init(){
     }
 
     window.addEventListener('resize',onWindowResize);
-    renderer.domElement.addEventListener('touchstart',onTouchStart,{passive:false});
-    renderer.domElement.addEventListener('touchmove',onTouchMove,{passive:false});
-    renderer.domElement.addEventListener('touchend',onTouchEnd);
 
     renderer.setAnimationLoop(animate);
     // Start jaw animation loop even without audio so mouth moves anyhow if forced
@@ -624,8 +621,10 @@ function loadModel(url){
     const loader=new GLTFLoader();
     loader.load(url, gltf=>{
         model=gltf.scene; scene.add(model);
-        // Position avatar a lot to the right (positive X), down (negative Y), and back (negative Z)
-        model.position.set(1.5, -0.8, -1.5);
+        // Position avatar further to the right (positive X), down (negative Y), and back (negative Z)
+        model.position.set(3.0, -1.6, -2.0);
+        // Double the avatar size
+        model.scale.multiplyScalar(2.0);
         model.visible=true;
         // Rotate avatar 90 degrees to the right (clockwise when viewed from above)
         model.rotation.y = -Math.PI / 2;
