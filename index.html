@@ -739,13 +739,14 @@ function loadEngineModel(url){
         engineModel = gltf.scene;
         scene.add(engineModel);
         engineModel.visible = true;
+        // Scale engine much smaller relative to avatar
+        engineModel.scale.set(0.3, 0.3, 0.3);
         // Initial placement to the right of the avatar in non-AR view
         if (model) {
             const offsetWorld = ENGINE_OFFSET.clone();
             offsetWorld.applyQuaternion(model.quaternion);
             engineModel.position.copy(model.position).add(offsetWorld);
             engineModel.quaternion.copy(model.quaternion);
-            engineModel.scale.copy(model.scale);
         } else {
             engineModel.position.copy(ENGINE_OFFSET);
         }
@@ -781,7 +782,8 @@ function resetAvatar(){
         offsetWorld.applyQuaternion(model.quaternion);
         engineModel.position.copy(model.position).add(offsetWorld);
         engineModel.quaternion.copy(model.quaternion);
-        engineModel.scale.copy(model.scale);
+        // Keep engine at fixed small scale
+        engineModel.scale.set(0.3, 0.3, 0.3);
     }
 }
 
@@ -856,7 +858,8 @@ function animate(){
         offsetWorld.applyQuaternion(model.quaternion);
         engineModel.position.copy(model.position).add(offsetWorld);
         engineModel.quaternion.copy(model.quaternion);
-        engineModel.scale.copy(model.scale);
+        // Keep engine at fixed small scale
+        engineModel.scale.set(0.3, 0.3, 0.3);
     }
     renderer.render(scene,camera);
     updateARHitTest();
