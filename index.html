@@ -38,9 +38,9 @@
 
 <div id="status-message"></div>
 
-<div id="ar-button-container" style="display:none;">
+<div id="ar-button-container">
     <button id="ar-button-placeholder">Enter Augmented Reality</button>
-    </div>
+</div>
 
 <div id="ar-controls-container" style="position:absolute; bottom:2rem; left:50%; transform:translateX(-50%); z-index:10; display:none; flex-direction:column; align-items:center; gap:0.5rem;">
     <button id="mic-button" class="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white font-bold p-4 rounded-full transition duration-200 shadow-lg flex justify-center items-center">
@@ -224,28 +224,16 @@ function init(){
     renderer=new THREE.WebGLRenderer({ antialias:true, alpha:true });
     renderer.setSize(window.innerWidth,window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.xr.enabled=false;
+    renderer.xr.enabled=true;
     document.body.appendChild(renderer.domElement);
 
     controls=new OrbitControls(camera,renderer.domElement);
     controls.target.set(0,1,0);
-    controls.enablePan=false;
     controls.update();
-
-    const textureLoader = new THREE.TextureLoader();
-    textureLoader.load('Gemini_Generated_Image_jaowf8jaowf8jaow.png', (texture)=>{
-        const panoGeo = new THREE.SphereGeometry(20, 64, 64);
-        const panoMat = new THREE.MeshBasicMaterial({ map:texture, side:THREE.BackSide });
-        const panoMesh = new THREE.Mesh(panoGeo, panoMat);
-        panoMesh.position.set(0,0,0);
-        scene.add(panoMesh);
-    }, undefined, (err)=>{
-        console.error('Failed to load Gemini_Generated_Image_jaowf8jaowf8jaow.png', err);
-        showStatusMessage('Could not load background image Gemini_Generated_Image_jaowf8jaowf8jaow.png');
-    });
 
     loadModel(defaultAvatarUrl);
     setupSpeechRecognition();
+    setupAR();
 
     micButton.addEventListener('click',toggleListening);
     if(sendButton){
@@ -255,6 +243,9 @@ function init(){
     }
 
     window.addEventListener('resize',onWindowResize);
+    renderer.domElement.addEventListener('touchstart',onTouchStart,{passive:false});
+    renderer.domElement.addEventListener('touchmove',onTouchMove,{passive:false});
+    renderer.domElement.addEventListener('touchend',onTouchEnd);
 
     renderer.setAnimationLoop(animate);
     // Start jaw animation loop even without audio so mouth moves anyhow if forced
@@ -620,14 +611,7 @@ function setJaw(value){
 function loadModel(url){
     const loader=new GLTFLoader();
     loader.load(url, gltf=>{
-        model=gltf.scene; scene.add(model);
-        // Position avatar further to the right (positive X), down (negative Y), and back (negative Z)
-        model.position.set(3.0, -1.6, -2.0);
-        // Double the avatar size
-        model.scale.multiplyScalar(2.0);
-        model.visible=true;
-        // Rotate avatar 90 degrees to the right (clockwise when viewed from above)
-        model.rotation.y = -Math.PI / 2;
+        model=gltf.scene; scene.add(model); model.position.set(0,0,0); model.visible=true;
         // Ensure teeth meshes are visible
         model.traverse(child=>{
             const n=(child.name||'').toLowerCase();
