@@ -199,7 +199,9 @@ const sendButton=document.getElementById('send-button');
 // debug elements removed
 
 const defaultAvatarUrl='https://raw.githubusercontent.com/mgb111/ar-avatar/main/avatar.glb';
+const engineModelUrl='./3d_printable_radial_pneumatic_engine.glb';
 const aiQueue=[];
+let engineModel = null;
 
 init();
 
@@ -232,6 +234,7 @@ function init(){
     controls.update();
 
     loadModel(defaultAvatarUrl);
+    loadEngineModel();
     setupSpeechRecognition();
     setupAR();
 
@@ -731,6 +734,22 @@ function loadModel(url){
     },xhr=>{},err=>{ loadingOverlay.style.display='none'; showStatusMessage('Failed to load 3D model'); });
 }
 
+// --- Engine Model Loading --- //
+function loadEngineModel(){
+    const loader=new GLTFLoader();
+    loader.load(engineModelUrl, gltf=>{
+        engineModel=gltf.scene; 
+        scene.add(engineModel);
+        
+        // Position engine to the right of the avatar
+        engineModel.position.set(1.5, 0, 0); // 1.5 units to the right
+        engineModel.scale.set(0.5, 0.5, 0.5); // Scale down if needed
+        engineModel.visible=true;
+        
+        console.log('Engine model loaded successfully');
+    },xhr=>{},err=>{ console.warn('Failed to load engine model:', err); });
+}
+
 // --- AR Placement --- //
 function onSelect(){
     if(!reticle.visible) return;
@@ -738,6 +757,13 @@ function onSelect(){
     if(!isPlaced && model){
         model.position.setFromMatrixPosition(reticle.matrix);
         model.visible=true;
+        
+        // Position engine to the right of the placed avatar
+        if(engineModel){
+            engineModel.position.set(model.position.x + 1.5, model.position.y, model.position.z);
+            engineModel.visible=true;
+        }
+        
         arInstructions.style.display='none';
         reticle.visible=false;
         isPlaced=true;
@@ -745,7 +771,20 @@ function onSelect(){
 }
 
 // --- Reset Avatar --- //
-function resetAvatar(){ if(model){ model.position.set(0,0,0); model.scale.set(1,1,1); model.rotation.set(0,0,0); jawOpenMorphTargetIndex!==null && setJaw(0); reticle.visible=true; } }
+function resetAvatar(){ 
+    if(model){ 
+        model.position.set(0,0,0); 
+        model.scale.set(1,1,1); 
+        model.rotation.set(0,0,0); 
+        jawOpenMorphTargetIndex!==null && setJaw(0); 
+        reticle.visible=true; 
+    }
+    if(engineModel){
+        engineModel.position.set(1.5, 0, 0);
+        engineModel.scale.set(0.5, 0.5, 0.5);
+        engineModel.rotation.set(0,0,0);
+    }
+}
 
 // --- Touch Gestures for Scale --- //
 let ongoingTouches=[];
