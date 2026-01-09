@@ -169,7 +169,7 @@ const FORCE_MOVEMENT_ALWAYS = false;
 // Drive visemes from audio bands (set to true if you want extra lip shapes)
 const USE_VISEMES = false;
 
-let camera, scene, renderer, controls, model, mixer, clock, jawOpenMorphTargetIndex = null, jawMesh = null, jawBone = null, jawBoneBaseX = 0, lastJaw=0;
+let camera, scene, renderer, controls, model, mixer, clock, jawOpenMorphTargetIndex = null, jawMesh = null, jawBone = null, jawBoneBaseX = 0, lastJaw=0, engineModel=null;
 // Viseme morph targets discovered in the model: { mesh, name, index }
 let visemeTargets = [];
 // Mouth pulsing state for more expressive movement
@@ -199,6 +199,8 @@ const sendButton=document.getElementById('send-button');
 // debug elements removed
 
 const defaultAvatarUrl='https://raw.githubusercontent.com/mgb111/ar-avatar/main/avatar.glb';
+const engineModelUrl='./3d_printable_radial_pneumatic_engine.glb';
+const ENGINE_OFFSET = new THREE.Vector3(0.6, 0, 0); // offset to the right of the avatar
 const aiQueue=[];
 
 init();
@@ -232,6 +234,7 @@ function init(){
     controls.update();
 
     loadModel(defaultAvatarUrl);
+    loadEngineModel(engineModelUrl);
     setupSpeechRecognition();
     setupAR();
 
@@ -683,7 +686,6 @@ function loadModel(url){
                     if((LIP_BONE_NAME && n.includes(LIP_BONE_NAME.toLowerCase())) || n.includes('jaw') || n.includes('chin') || (n.includes('mouth') && !n.includes('upper'))){
                         jawBone = child;
                         jawBoneBaseX = child.rotation.x;
-                        
                     }
                 }
             });
@@ -731,6 +733,27 @@ function loadModel(url){
     },xhr=>{},err=>{ loadingOverlay.style.display='none'; showStatusMessage('Failed to load 3D model'); });
 }
 
+function loadEngineModel(url){
+    const loader = new GLTFLoader();
+    loader.load(url, gltf => {
+        engineModel = gltf.scene;
+        scene.add(engineModel);
+        engineModel.visible = true;
+        // Initial placement to the right of the avatar in non-AR view
+        if (model) {
+            const offsetWorld = ENGINE_OFFSET.clone();
+            offsetWorld.applyQuaternion(model.quaternion);
+            engineModel.position.copy(model.position).add(offsetWorld);
+            engineModel.quaternion.copy(model.quaternion);
+            engineModel.scale.copy(model.scale);
+        } else {
+            engineModel.position.copy(ENGINE_OFFSET);
+        }
+    }, xhr => {}, err => {
+        showStatusMessage('Failed to load engine model');
+    });
+}
+
 // --- AR Placement --- //
 function onSelect(){
     if(!reticle.visible) return;
@@ -745,7 +768,22 @@ function onSelect(){
 }
 
 // --- Reset Avatar --- //
-function resetAvatar(){ if(model){ model.position.set(0,0,0); model.scale.set(1,1,1); model.rotation.set(0,0,0); jawOpenMorphTargetIndex!==null && setJaw(0); reticle.visible=true; } }
+function resetAvatar(){
+    if(model){
+        model.position.set(0,0,0);
+        model.scale.set(1,1,1);
+        model.rotation.set(0,0,0);
+        jawOpenMorphTargetIndex!==null && setJaw(0);
+        reticle.visible=true;
+    }
+    if(engineModel && model){
+        const offsetWorld = ENGINE_OFFSET.clone();
+        offsetWorld.applyQuaternion(model.quaternion);
+        engineModel.position.copy(model.position).add(offsetWorld);
+        engineModel.quaternion.copy(model.quaternion);
+        engineModel.scale.copy(model.scale);
+    }
+}
 
 // --- Touch Gestures for Scale --- //
 let ongoingTouches=[];
@@ -809,7 +847,21 @@ function onTouchEnd(e){
 function onWindowResize(){ camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight); }
 
 // --- Animate Loop --- //
-function animate(){ const delta=clock.getDelta(); if(mixer) mixer.update(delta); renderer.render(scene,camera); updateARHitTest(); updateMicLevel(); }
+function animate(){
+    const delta=clock.getDelta();
+    if(mixer) mixer.update(delta);
+    // Keep engine model locked to the avatar with a right-side offset
+    if(engineModel && model){
+        const offsetWorld = ENGINE_OFFSET.clone();
+        offsetWorld.applyQuaternion(model.quaternion);
+        engineModel.position.copy(model.position).add(offsetWorld);
+        engineModel.quaternion.copy(model.quaternion);
+        engineModel.scale.copy(model.scale);
+    }
+    renderer.render(scene,camera);
+    updateARHitTest();
+    updateMicLevel();
+}
 
 function updateARHitTest(){
     if(renderer.xr.isPresenting && !hitTestSourceRequested){
